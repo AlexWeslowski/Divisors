@@ -1,0 +1,7 @@
+/.git
+/.vs
+/build
+/out
+divisors.egg-info
+pyproject.toml
+setup.py
