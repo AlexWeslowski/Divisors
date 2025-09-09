@@ -31,7 +31,9 @@ find_package(Python COMPONENTS Development REQUIRED)
 #find_package(primesieve REQUIRED)
 
 #find_library(LIB_PRIMESIEVE primesieve HINTS include)
-add_library(Divisors STATIC "src/Divisors.cpp" "include/Point.h" "src/Point.cpp" "include/ValidInteger.h" "include/Builtins.h")
+add_library(Divisors STATIC  "include/Globals.h" "src/Globals.cpp" "src/Divisors.cpp" "include/Point.h" "src/Point.cpp" "include/ValidInteger.h" "include/Builtins.h" "src/ArrayArray.cpp" "include/ArrayArray.h" "src/Combinations.cpp" "include/Combinations.h" "include/Stringify.h")
+#add_library(ArrayArray STATIC "include/Globals.h" "src/Globals.cpp" "include/ValidInteger.h" "src/ArrayArray.cpp" "include/ArrayArray.h")
+#add_library(Globals STATIC "include/Globals.h" "src/Globals.cpp")
 #add_executable (Divisors "Divisors.cpp" "Divisors.h")
 
 
@@ -58,10 +60,16 @@ link_directories(
     lib
 )
 
+#pybind11_add_module(ArrayArray "include/ValidInteger.h" "include/ArrayArray.h" "src/ArrayArray.cpp")
 #target_link_libraries(SH_module PRIVATE Python::Python)
 #target_link_libraries(Divisors primesieve)
 #target_link_libraries(Divisors include/primsieve.lib)
-target_link_libraries(Divisors primesieve)
+target_link_libraries(Divisors primesieve) 
+#target_link_libraries(Globals PRIVATE Divisors)
+#target_link_libraries(Globals PRIVATE ArrayArray)
+#target_link_libraries(ArrayArray PRIVATE Divisors)
+
+
 
 install(TARGETS Divisors DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
