@@ -1309,6 +1309,13 @@ void set_verbose(bool v) {
 
 /*
 
+git remote add origin https://aweslowski+Cpp@gmail.com@github.com/repository_owner/repository_name.git
+git remote add origin https://aweslowski%2BCpp%40gmail%2Ecom@github.com/AlexWeslowski%2DCpp/Divisors.git
+
+ git remote set-url origin https://aweslowski%2BCpp%40gmail%2Ecom@github.com/AlexWeslowski%2DCpp/Divisors.git
+ git remote set-url origin https://AlexWeslowski@github.com/AlexWeslowski/Divisors.git
+
+
 Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\Divisors
 
 import sympy
