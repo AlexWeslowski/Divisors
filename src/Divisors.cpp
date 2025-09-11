@@ -1,18 +1,9 @@
 ﻿#include "../include/ArrayArray.h"
 #include "../include/Divisors.h"
 #include <../include/Combinations.h>
+#include <../include/CombinationsIterator.h>
+
 using namespace std;
-
-/*
-class Foo {
-    public:
-        void bar() {
-            std::cout << "Hello" << std::endl;
-        }
-};
-*/
-
-
 namespace py = pybind11;
 
 
@@ -27,34 +18,6 @@ namespace __gnu_cxx
 }
 
 
-template<typename T>
-std::string to_string(const std::vector<T>& vec) {
-    std::ostringstream oss;
-    oss << "[";
-    for (size_t i = 0; i < vec.size(); ++i) {
-        oss << vec[i];
-        if (i != vec.size() - 1)
-            oss << ", ";
-    }
-    oss << "]";
-    return oss.str();
-}
-
-template<typename T1, typename T2>
-std::string to_string(const std::map<T1, T2>& map) {
-    std::ostringstream oss;
-    oss << "{";
-    auto it = map.begin();
-    while (it != map.end()) {
-        oss << it->first << ": " << it->second;
-        ++it;
-        if (it != map.end()) {
-            oss << ", ";
-        }
-    }
-    oss << "}";
-    return oss.str();
-}
 
 template<ValidIntegerType T>
 Divisors<T>::Divisors() {
@@ -258,6 +221,12 @@ Divisors<T>::Divisors() {
         aryprimes.push_back(p);
         setprimes[p] = true;
     }
+
+    divisors_cache = ArrayArray<T>(isqrt3a(LEN_PRIMES), true);
+    for (int i = 0; i < isqrt3a(LEN_PRIMES); i++) {
+        divisors_cache.push_back(divisors(i));
+    }
+    if (Globals::verbose) std::cout << "divisors_cache.size() = " << divisors_cache.size() << ", divisors_cache.values_size() = " << divisors_cache.values_size() << std::endl;
 
     //std::vector<int> aryprimes;
     //primesieve::generate_primes(LEN_PRIMES, &aryprimes);
@@ -542,11 +511,14 @@ std::vector<T> Divisors<T>::divisors(T n) {
     if (setprimes[n]) {
         return { 1, n };
     }
-    if (setprimes[n/2]) {
+    if (n % 2 == 0 && setprimes[n/2]) {
         return { 1, 2, n/2, n };
     }
-    if (setprimes[n/3]) {
+    if (n % 3 == 0 && setprimes[n/3]) {
         return { 1, 3, n/3, n };
+    }
+    if (n < divisors_cache.size()) {
+        return divisors_cache.get(n);
     }
     std::vector<T> result = _divisors(abs_n);
     std::sort(result.begin(), result.end());
@@ -1522,18 +1494,29 @@ for i in range(0, 2**18):
 */
 
 /*
-* 
-* Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\Divisors
-* python.exe
-* import sympy
-* import divisors
-* import time
-* import random
-* 
-* sd = sympy.divisors(23*719*3089)
-* dd = divisors.divisors(23*719*3089)
-* sd == dd
-* 
+
+import sympy
+import divisors
+import time
+import random
+import sys
+
+divisors.set_verbose(True)
+factors = []
+combinations = divisors.Combinations()
+_ = combinations.backtrack(3293136, 1, [4, 18, 22, 27, 77])
+_ = combinations.backtrack(3293136, 1, [6, 8, 9, 21, 363])
+_ = combinations.backtrack(3293136, 1, [6, 8, 21, 27, 121])
+combinations.to_list()
+
+divisors.set_verbose(False)
+combinations = divisors.Combinations()
+aryary = combinations.backtrack(3293136, 3293136, [])
+
+sd = sympy.divisors(23*719*3089)
+dd = divisors.divisors(23*719*3089)
+sd == dd
+
 */
 
 
@@ -1550,37 +1533,13 @@ PYBIND11_MODULE(divisors, m) {
         .def("divisors", &Divisors<int64_t>::divisors)
         .def("set_verbose", &Divisors<int64_t>::set_verbose);
 
-    //py::class_<ArrayArray<int64_t>>(m, "ArrayArray");
 
-    /*
-    using ArrayArrayT = ArrayArray<int64_t>;
-    std::string type_name = "";
-    py::class_<ArrayArrayT>(m, ("ArrayArray" + type_name).c_str())
-        .def(py::init<size_t, bool>(), py::arg("capacity"), py::arg("resizeable"))
-        .def("append", &ArrayArrayT::append, py::arg("ary"))
-        .def("removeAt", &ArrayArrayT::removeAt, py::arg("idx"))
-        .def("__len__", &ArrayArrayT::getSize)
-        .def("__getitem__", &ArrayArrayT::getItem, py::arg("idx"))
-        .def("to_array", &ArrayArrayT::to_array)
-        .def_readwrite("keys", &ArrayArrayT::keys)
-        .def_readwrite("values", &ArrayArrayT::values);
-    */
+#include <../src/ArrayArrayPy.cpp>
 
-    py::class_<ArrayArray<int64_t>, std::shared_ptr<ArrayArray<int64_t>>>(m, "ArrayArray")
-        .def(py::init<size_t, bool>(), py::arg("capacity"), py::arg("resizeable"))
-        .def("append", &ArrayArray<int64_t>::append)
-        .def("push_back", &ArrayArray<int64_t>::push_back)
-        .def("removeAt", &ArrayArray<int64_t>::removeAt)
-        .def("to_array", &ArrayArray<int64_t>::to_array)
-        //.def("get_size", &ArrayArray<int64_t>::getSize) 
-        //.def("get_item", &ArrayArray<int64_t>::getItem) 
-        .def("__len__", &ArrayArray<int64_t>::getSize)
-        .def("__getitem__", &ArrayArray<int64_t>::getItem);
+#include <../src/CombinationsPy.cpp>
 
-    py::class_<Combinations<int64_t>>(m, "Combinations")
-        .def(py::init())
-        .def("backtrack", &Combinations<int64_t>::backtrack)
-        .def("set_verbose", &Combinations<int64_t>::set_verbose);
+//#include <../src/CombinationsIteratorPy.cpp>
+
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);

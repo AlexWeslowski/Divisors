@@ -11,10 +11,10 @@
 
 template <ValidIntegerType T>
 struct Point {
-    T x_cord;
-    T z_cord;
-    T a_24;
-    T mod;
+    T x_cord = 0;
+    T z_cord = 0;
+    T a_24 = 0;
+    T mod = 0;
 
     Point(T x_cord, T z_cord, T a_24, T mod);
 

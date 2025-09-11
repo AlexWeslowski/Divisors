@@ -1,4 +1,5 @@
 #include "../include/ArrayArray.h"
+
 using namespace std; 
 
 namespace py = pybind11;
@@ -60,46 +61,68 @@ void ArrayArray<T>::append(const std::vector<T>& ary) {
 }
 
 template<ValidIntegerType T>
-void ArrayArray<T>::removeAt(size_t idx) {
-        if (2 * idx + 1 >= keys_index_) {
-            return;
-        }
-        keys[2 * idx] = -1;
-        keys[2 * idx + 1] = -1;
-        size_--;
-    }
+void ArrayArray<T>::remove_at(size_t idx) {
+    removeAt(idx);
+}
 
 template<ValidIntegerType T>
-size_t ArrayArray<T>::getSize() const {
+void ArrayArray<T>::removeAt(size_t idx) {
+    if (2 * idx + 1 >= keys_index_) {
+        return;
+    }
+    keys[2 * idx] = -1;
+    keys[2 * idx + 1] = -1;
+    size_--;
+}
+
+template<ValidIntegerType T>
+size_t ArrayArray<T>::size() const {
     return keys_index_ / 2;
 }
 
 template<ValidIntegerType T>
-std::vector<T> ArrayArray<T>::getItem(size_t idx) const {
+size_t ArrayArray<T>::len() const {
+    return keys_index_ / 2;
+}
+
+template<ValidIntegerType T>
+size_t ArrayArray<T>::values_size() const {
+    return values_index_;
+}
+
+template<ValidIntegerType T>
+size_t ArrayArray<T>::values_len() const {
+    return values_index_;
+}
+
+template<ValidIntegerType T>
+std::vector<T> ArrayArray<T>::get(size_t idx) const {
     size_t key_idx = 2 * idx;
-    if (key_idx >= keys_index_ || key_idx + 1 >= keys_index_ || keys[key_idx] == -1) {
-        return {}; // Return empty vector
+    if (Globals::verbose) std::cout << "ArrayArray::get() size_ = " << size_ << ", keys_index_ = " << keys_index_ << ", values_index_ = " << values_index_ << std::endl;
+    if (Globals::verbose) std::cout << "ArrayArray::get() key_idx = " << key_idx << ", idx = " << idx << ", keys[" << key_idx << "] = " << keys[key_idx] << ", keys[" << (key_idx + 1) << "] = " << keys[key_idx + 1] << std::endl;
+    if (key_idx >= keys_index_ || key_idx + 1 >= keys_index_ || keys[key_idx] == -1 || keys[key_idx + 1] == -1) {
+        return {}; 
     }
-
-    size_t i = keys[key_idx];
-    size_t j = keys[key_idx + 1];
-
     /*
     if (i >= values.size() || j >= values.size()) {
         throw std::out_of_range("Invalid indices in keys vector.");
     }
     */
-
-    return std::vector<int64_t>(values.begin() + i, values.begin() + j + 1);
+    return std::vector<int64_t>(values.begin() + keys[key_idx], values.begin() + keys[key_idx + 1] + 1);
 }
 
+template<ValidIntegerType T>
+std::vector<std::vector<T>> ArrayArray<T>::to_list() const {
+    return to_array();
+}
+    
 template<ValidIntegerType T>
 std::vector<std::vector<T>> ArrayArray<T>::to_array() const {
     if (Globals::verbose) std::cout << "ArrayArray::to_array() size_ = " << size_ << ", keys_index_ = " << keys_index_ << ", values_index_ = " << values_index_ << ")" << std::endl;
     std::vector<std::vector<T>> result;
     for (size_t i = 0; i < keys_index_; i += 2) {
         if (keys[i] != -1) {
-            result.push_back(getItem(i / 2));
+            result.push_back(get(i / 2));
         }
     }
     return result;
@@ -123,18 +146,7 @@ PYBIND11_MODULE(arrayarray, m) {
         .def_readwrite("values", &ArrayArrayT::values);
     */
 
-    py::class_<ArrayArray<int64_t>, std::shared_ptr<ArrayArray<int64_t>>>(m, "ArrayArray")
-        .def(py::init())
-        .def(py::init<size_t, bool>(), py::arg("capacity"), py::arg("resizeable"))
-        .def("append", &ArrayArray<int64_t>::append)
-        .def("push_back", &ArrayArray<int64_t>::push_back)
-        .def("removeAt", &ArrayArray<int64_t>::removeAt)
-        .def("to_array", &ArrayArray<int64_t>::to_array)
-        //.def("get_size", &ArrayArray<int64_t>::getSize)
-        //.def("get_item", &ArrayArray<int64_t>::getItem)
-        .def("__len__", &ArrayArray<int64_t>::getSize)
-        .def("__getitem__", &ArrayArray<int64_t>::getItem);
-
+#include <../src/ArrayArrayPy.cpp>
 
 #ifdef VERSION_INFO
     m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);

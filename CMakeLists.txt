@@ -17,6 +17,12 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 endif()
 
+if (MSVC)
+    add_compile_options(/W4)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Werror -Winit-self)
+endif()
+
 project (Divisors CXX)
 
 include(FetchContent)
@@ -30,8 +36,12 @@ FetchContent_MakeAvailable(pybind11)
 find_package(Python COMPONENTS Development REQUIRED)
 #find_package(primesieve REQUIRED)
 
+set(INCLUDE_FILES "include/Globals.h" "include/Point.h" "include/ValidInteger.h" "include/Builtins.h" "include/ArrayArray.h" "include/Combinations.h" "include/Functions.h" "include/CombinationsIterator.h")
+set(SRC_FILES "src/Globals.cpp" "src/Divisors.cpp" "src/Point.cpp" "src/ArrayArray.cpp" "src/Combinations.cpp" "src/CombinationsIterator.cpp")
+
 #find_library(LIB_PRIMESIEVE primesieve HINTS include)
-add_library(Divisors STATIC  "include/Globals.h" "src/Globals.cpp" "src/Divisors.cpp" "include/Point.h" "src/Point.cpp" "include/ValidInteger.h" "include/Builtins.h" "src/ArrayArray.cpp" "include/ArrayArray.h" "src/Combinations.cpp" "include/Combinations.h" "include/Stringify.h")
+#add_library(Divisors STATIC  "include/Globals.h" "src/Globals.cpp" "src/Divisors.cpp" "include/Point.h" "src/Point.cpp" "include/ValidInteger.h" "include/Builtins.h" "src/ArrayArray.cpp" "include/ArrayArray.h" "src/Combinations.cpp" "include/Combinations.h" "include/Functions.h" "src/CombinationsIterator.cpp" "include/CombinationsIterator.h")
+add_library(Divisors STATIC ${SRC_FILES} ${INCLUDE_FILES})
 #add_library(ArrayArray STATIC "include/Globals.h" "src/Globals.cpp" "include/ValidInteger.h" "src/ArrayArray.cpp" "include/ArrayArray.h")
 #add_library(Globals STATIC "include/Globals.h" "src/Globals.cpp")
 #add_executable (Divisors "Divisors.cpp" "Divisors.h")
@@ -61,6 +71,8 @@ link_directories(
 )
 
 #pybind11_add_module(ArrayArray "include/ValidInteger.h" "include/ArrayArray.h" "src/ArrayArray.cpp")
+#pybind11_add_module(DivisorsModule ${SRC_FILES})
+
 #target_link_libraries(SH_module PRIVATE Python::Python)
 #target_link_libraries(Divisors primesieve)
 #target_link_libraries(Divisors include/primsieve.lib)
