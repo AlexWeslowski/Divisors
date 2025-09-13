@@ -33,6 +33,76 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
+
+get_filename_component(PARENT_DIR "${PROJECT_SOURCE_DIR}" DIRECTORY)
+get_filename_component(PARENT_DIR "${PARENT_DIR}" DIRECTORY)
+set(REPOS
+    "cppalliance/int128/include/boost;boost"
+    "jbapple/128-bit-literals;128-bit-literals"
+    "int128-libraries/abslint128/include;abslint128"
+    "int128-libraries/abslint128/src;abslint128"
+    "abseil/abseil-cpp/absl/numeric;absl"
+)
+foreach(REPO ${REPOS}) 
+    string(REPLACE ";" " " ATUPLE "${REPO}")
+    separate_arguments(ALIST UNIX_COMMAND "${ATUPLE}")
+    list(GET ALIST 0 ASTRING)
+    list(GET ALIST 1 BSTRING)
+    
+    string(REPLACE "/" " " BTUPLE "${ASTRING}")
+    separate_arguments(BLIST UNIX_COMMAND "${BTUPLE}")
+    list(GET BLIST 0 CSTRING)
+    list(GET BLIST 1 DSTRING)
+
+    string(REPLACE ";" " " ALIST "${REPO}")
+    string(REPLACE "/" " " BLIST "${ALIST_0}")
+    
+    message(STATUS "ASTRING = ${ASTRING}")
+    message(STATUS "BSTRING = ${BSTRING}")
+    message(STATUS "CSTRING = ${CSTRING}")
+    message(STATUS "DSTRING = ${DSTRING}")
+    message(STATUS "ALIST_0 = ${ALIST_0}")
+    message(STATUS "ALIST_1 = ${ALIST_1}")
+    message(STATUS "BLIST_0 = ${BLIST_0}")
+    message(STATUS "BLIST_1 = ${BLIST_1}")
+
+    set(CLONE_DIR "${PARENT_DIR}/${CSTRING}")
+    file(MAKE_DIRECTORY "${CLONE_DIR}")
+	if(NOT EXISTS "${CLONE_DIR}/${DSTRING}/.git")
+		message(STATUS "Cloning repo into ${CLONE_DIR}")
+		execute_process(
+			COMMAND git clone --depth 1 https://github.com/${CSTRING}/${DSTRING}.git "${CLONE_DIR}"
+			RESULT_VARIABLE clone_result
+			OUTPUT_VARIABLE clone_output
+			ERROR_VARIABLE clone_error
+		)
+		if(NOT clone_result EQUAL 0)
+			message(FATAL_ERROR "Git clone failed:\n${clone_error}")
+		endif()
+	else()
+		message(STATUS "Repo already exists at ${CLONE_DIR}, skipping clone.")
+	endif()
+	set(CLONE_DIR "${PARENT_DIR}/${ASTRING}/")
+    message(STATUS "Clone from directory ${CLONE_DIR}")
+    message(STATUS "Clone to directory ${PROJECT_SOURCE_DIR}/include/${BSTRING}")
+	file(COPY ${CLONE_DIR} DESTINATION "${PROJECT_SOURCE_DIR}/include/${BSTRING}")
+endforeach()
+
+
+set(BASE_URL "https://github.com/gcc-mirror/gcc/tree/master/gcc")
+set(FILES "wide-int.cc" "wide-int.h" "wide-int-bitmask.h" "wide-int-print.cc" "wide-int-print.h")
+foreach(FILE ${FILES})
+    set(URL "${BASE_URL}/${FILE}")
+    set(DEST "${PROJECT_SOURCE_DIR}/include/gcc/${FILE}")
+    get_filename_component(DEST_DIR ${DEST} DIRECTORY)
+    file(MAKE_DIRECTORY ${DEST_DIR})
+    file(DOWNLOAD ${URL} ${DEST}
+        STATUS status
+        SHOW_PROGRESS
+        LOG log)
+endforeach()
+
+
 find_package(Python COMPONENTS Development REQUIRED)
 #find_package(primesieve REQUIRED)
 
