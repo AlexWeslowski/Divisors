@@ -5,6 +5,8 @@ py::class_<Combinations<int64_t>, std::shared_ptr<Combinations<int64_t>>>(m, "Co
 .def_readwrite("min_factors", &Combinations<int64_t>::min_factors)
 .def_readwrite("max_factors", &Combinations<int64_t>::max_factors)
 .def("backtrack", &Combinations<int64_t>::backtrack)
+.def("removeAt", &Combinations<int64_t>::removeAt)
+.def("remove_at", &Combinations<int64_t>::remove_at)
 .def("to_array", &Combinations<int64_t>::to_array)
 .def("to_list", &Combinations<int64_t>::to_list)
 .def("get_arrayarray", &Combinations<int64_t>::get_arrayarray)

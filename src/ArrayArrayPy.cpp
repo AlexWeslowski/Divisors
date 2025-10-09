@@ -20,6 +20,7 @@ py::class_<ArrayArray<int64_t>, std::shared_ptr<ArrayArray<int64_t>>>(m, "ArrayA
 .def("append", &ArrayArray<int64_t>::append)
 .def("push_back", &ArrayArray<int64_t>::push_back)
 .def("removeAt", &ArrayArray<int64_t>::removeAt)
+.def("remove_at", &ArrayArray<int64_t>::remove_at)
 .def("to_array", &ArrayArray<int64_t>::to_array)
 .def("to_list", &ArrayArray<int64_t>::to_list)
 .def("values_len", &ArrayArray<int64_t>::values_len)

@@ -25,9 +25,10 @@ size_t Combinations<T>::len() const {
 
 template <ValidIntegerType T>
 std::vector<T> Combinations<T>::next() {
-	if (get_verbose()) std::cout << "Combinations::next() index = " << index << ", aryary->size() = " << ((aryary) ? aryary->size() : 0) << std::endl;
+	if (get_verbose()) std::cout << "Combinations::next() index = " << index << ", aryary ? " << ((aryary) ? true : false) << ", aryary->size() = " << ((aryary) ? aryary->size() : 0) << std::endl;
     if (!aryary || index >= aryary->size()) {
         index = 0;
+		if (get_verbose()) std::cout << "Combinations::next() stop_iteration()" << std::endl;
         throw pybind11::stop_iteration();
     }
     std::vector<T> vec = aryary->get(index++);
@@ -37,6 +38,8 @@ std::vector<T> Combinations<T>::next() {
 	}
 	if (iter && vec.size() == 0 && index >= aryary->size()) {
         index = 0;
+		if (get_verbose()) std::cout << "Combinations::next() iter = " << iter << ", vec.size() = " << vec.size() << std::endl;
+		if (get_verbose()) std::cout << "Combinations::next() stop_iteration()" << std::endl;
 		throw pybind11::stop_iteration();
 	}
     return vec;

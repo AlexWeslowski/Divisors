@@ -520,9 +520,10 @@ std::vector<T> Divisors<T>::divisors(T n) {
     if (n < divisors_cache.size()) {
         return divisors_cache.get(n);
     }
-    std::vector<T> result = _divisors(abs_n);
-    std::sort(result.begin(), result.end());
-    return result;
+    std::vector<T> vec = _divisors(abs_n);
+	if (Globals::verbose) std::cout << "divisors(n=" << n << ") returning " << to_string<T>(vec) << std::endl;
+    std::sort(vec.begin(), vec.end());
+    return vec;
 }
 
 //cannot convert argument 2 from 'std::map<T,int, ...>' to 'const std::map<int64_t,int64_t, ...> &
@@ -1282,7 +1283,7 @@ void set_verbose(bool v) {
 /*
 
 
-Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\Divisors
+Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
 
 import sympy
 import sympy.external.gmpy

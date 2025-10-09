@@ -25,6 +25,7 @@ endif()
 
 project (Divisors CXX)
 
+find_package(Git QUIET)
 include(FetchContent)
 FetchContent_Declare(
   pybind11
@@ -37,39 +38,31 @@ FetchContent_MakeAvailable(pybind11)
 get_filename_component(PARENT_DIR "${PROJECT_SOURCE_DIR}" DIRECTORY)
 get_filename_component(PARENT_DIR "${PARENT_DIR}" DIRECTORY)
 set(REPOS
-    "cppalliance/int128/include/boost;boost"
-    "jbapple/128-bit-literals;128-bit-literals"
-    "int128-libraries/abslint128/include;abslint128"
-    "int128-libraries/abslint128/src;abslint128"
-    "abseil/abseil-cpp/absl/numeric;absl"
+    "cppalliance/int128/include/boost=boost"
+    "jbapple/128-bit-literals=128-bit-literals"
+    "int128-libraries/abslint128/include=abslint128"
+    "int128-libraries/abslint128/src=abslint128"
+    "abseil/abseil-cpp/absl/numeric=absl"
 )
 foreach(REPO ${REPOS}) 
-    string(REPLACE ";" " " ATUPLE "${REPO}")
-    separate_arguments(ALIST UNIX_COMMAND "${ATUPLE}")
+    string(REPLACE "=" ";" ALIST ${REPO})
     list(GET ALIST 0 ASTRING)
     list(GET ALIST 1 BSTRING)
     
-    string(REPLACE "/" " " BTUPLE "${ASTRING}")
-    separate_arguments(BLIST UNIX_COMMAND "${BTUPLE}")
+    string(REPLACE "/" ";" BLIST ${ASTRING})
     list(GET BLIST 0 CSTRING)
     list(GET BLIST 1 DSTRING)
 
-    string(REPLACE ";" " " ALIST "${REPO}")
-    string(REPLACE "/" " " BLIST "${ALIST_0}")
-    
+    message(STATUS "REPO = ${REPO}")
     message(STATUS "ASTRING = ${ASTRING}")
     message(STATUS "BSTRING = ${BSTRING}")
     message(STATUS "CSTRING = ${CSTRING}")
     message(STATUS "DSTRING = ${DSTRING}")
-    message(STATUS "ALIST_0 = ${ALIST_0}")
-    message(STATUS "ALIST_1 = ${ALIST_1}")
-    message(STATUS "BLIST_0 = ${BLIST_0}")
-    message(STATUS "BLIST_1 = ${BLIST_1}")
 
     set(CLONE_DIR "${PARENT_DIR}/${CSTRING}")
     file(MAKE_DIRECTORY "${CLONE_DIR}")
 	if(NOT EXISTS "${CLONE_DIR}/${DSTRING}/.git")
-		message(STATUS "Cloning repo into ${CLONE_DIR}")
+		message(STATUS "Directory ${CLONE_DIR}/${DSTRING}/.git does not exist")
 		execute_process(
 			COMMAND git clone --depth 1 https://github.com/${CSTRING}/${DSTRING}.git "${CLONE_DIR}"
 			RESULT_VARIABLE clone_result
@@ -80,7 +73,7 @@ foreach(REPO ${REPOS})
 			message(FATAL_ERROR "Git clone failed:\n${clone_error}")
 		endif()
 	else()
-		message(STATUS "Repo already exists at ${CLONE_DIR}, skipping clone.")
+		message(STATUS "Repo already exists at ${CLONE_DIR}/${DSTRING}, skipping clone.")
 	endif()
 	set(CLONE_DIR "${PARENT_DIR}/${ASTRING}/")
     message(STATUS "Clone from directory ${CLONE_DIR}")
@@ -115,6 +108,10 @@ add_library(Divisors STATIC ${SRC_FILES} ${INCLUDE_FILES})
 #add_library(ArrayArray STATIC "include/Globals.h" "src/Globals.cpp" "include/ValidInteger.h" "src/ArrayArray.cpp" "include/ArrayArray.h")
 #add_library(Globals STATIC "include/Globals.h" "src/Globals.cpp")
 #add_executable (Divisors "Divisors.cpp" "Divisors.h")
+
+#set(INCLUDE_FILES "include/abslint128/abslint128.h")
+#set(SRC_FILES "include/abslint128/int128.cpp")
+#add_library(Abslint128 STATIC ${SRC_FILES} ${INCLUDE_FILES})
 
 
 include_directories(
