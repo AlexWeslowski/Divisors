@@ -3,6 +3,10 @@ from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup, Extension
 #from setuptools.command.build_ext import build_ext
 
+# 
+# FOR /R . %f IN (include\*.h) DO git add "%f"
+# 
+
 __version__ = "1.0.2"
 
 # The main interface is through Pybind11Extension.
