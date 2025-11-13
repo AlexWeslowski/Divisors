@@ -1,4 +1,4 @@
-﻿// Divisors.h : Include file for standard system include files,
+// Divisors.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
@@ -32,10 +32,12 @@
 #define DIVISORS_H
 
 static bool bln_init = false;
-// 2^24 = 16777216
-// 2^25 = 33554432
-// 2^26 = 67108864
-const int LEN_PRIMES = 67108864;
+// 2^24 =  16777216
+// 2^25 =  33554432
+// 2^26 =  67108864
+// 2^27 = 134217728
+// 2^28 = 268435456
+const int LEN_PRIMES = 268435456;
 const int MAX_RECURSION = 10;
 
 static std::vector<std::map<int64_t, int>> small_factor_cache(100);
