@@ -7,7 +7,7 @@ from setuptools import setup, Extension
 # FOR /R . %f IN (include\*.h) DO git add "%f"
 # 
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 # The main interface is through Pybind11Extension.
 # * You can add cxx_std=11/14/17, and then build_ext can be removed.
@@ -19,7 +19,7 @@ __version__ = "1.0.2"
 #   reproducible builds (https://github.com/pybind/python_example/pull/53)
 
 # 
-# Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\Divisors
+# Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
 # 
 
 
