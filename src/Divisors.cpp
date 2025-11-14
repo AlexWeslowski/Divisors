@@ -1275,6 +1275,10 @@ bool is_prime(int n) {
     return div.is_prime(n);
 }
 
+uint64_t len() {
+	return setprimes.size();
+}
+
 void set_verbose(bool v) {
     Globals::verbose = v;
 }
@@ -1527,6 +1531,8 @@ PYBIND11_MODULE(divisors, m) {
     m.def("divisors", &divisors);
     m.def("is_prime", &is_prime);
     m.def("set_verbose", &set_verbose);
+    m.def("len", &len);
+    m.def("size", &len);
 
     py::class_<Divisors<int64_t>>(m, "Divisors")
         //.def(py::init<const std::string&>(), py::arg("name"))
