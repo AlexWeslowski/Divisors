@@ -43,7 +43,7 @@ const int MAX_RECURSION = 10;
 static std::vector<std::map<int64_t, int>> small_factor_cache(100);
 static ArrayArray<int64_t> divisors_cache;
 static std::map<int64_t, int> factor_cache;
-static std::bitset<LEN_PRIMES + 1> setprimes;
+static std::bitset<LEN_PRIMES/2 + 1> setprimes;
 static std::vector<int64_t> aryprimes;
 static std::map<int64_t, size_t> idxprimes;
 

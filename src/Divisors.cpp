@@ -210,16 +210,15 @@ Divisors<T>::Divisors() {
 
 
     setprimes[0] = false;
-    setprimes[1] = false;
-    setprimes[2] = true;
-    setprimes[3] = true;
-    setprimes[4] = false;
+    setprimes[2/2] = true;
+    setprimes[3/2] = true;
+    setprimes[4/2] = false;
 
     primesieve::iterator it;
     uint64_t p = it.next_prime();
     for (; p < LEN_PRIMES; p = it.next_prime()) {
         aryprimes.push_back(p);
-        setprimes[p] = true;
+        setprimes[p/2] = true;
     }
 
     divisors_cache = ArrayArray<T>(isqrt3a(LEN_PRIMES), true);
@@ -490,9 +489,18 @@ int Divisors<T>::num_digits(T n) {
     return static_cast<int>(std::floor(std::log10(static_cast<long double>(std::abs(n))))) + 1;
 }
 
+/*
+import divisors as div
+assert(not div.is_prime(0))
+assert(not div.is_prime(1))
+assert(div.is_prime(2))
+assert(div.is_prime(3))
+assert(not div.is_prime(4))
+assert(div.is_prime(5))
+*/
 template<ValidIntegerType T>
 bool Divisors<T>::is_prime(T n) {
-    return setprimes[n];
+    return (n == 2) || ((n % 2 == 1) && setprimes[n/2]);
 }
     
 template<ValidIntegerType T>
@@ -508,13 +516,13 @@ std::pair<T, int> Divisors<T>::remove(T n, T p) {
 template<ValidIntegerType T>
 std::vector<T> Divisors<T>::divisors(T n) {
     T abs_n = n < 0 ? -n : n;
-    if (setprimes[n]) {
+    if (is_prime(n)) {
         return { 1, n };
     }
-    if (n % 2 == 0 && setprimes[n/2]) {
+    if (n % 2 == 0 && is_prime(n/2)) {
         return { 1, 2, n/2, n };
     }
-    if (n % 3 == 0 && setprimes[n/3]) {
+    if (n % 3 == 0 && is_prime(n/3)) {
         return { 1, 3, n/3, n };
     }
     if (n < divisors_cache.size()) {
@@ -683,8 +691,8 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
     size_t un = static_cast<size_t>(n);
 
     if (Globals::verbose) std::cout << "_check_termination() n < next_p * next_p (" << n << " < " << next_p << " * " << next_p << ") ? " << (n < next_p * next_p) << std::endl;
-    if (Globals::verbose) std::cout << "_check_termination() n < setprimes.size() (" << n << " < " << setprimes.size() << ") ? " << (un < setprimes.size()) << std::endl;
-    if (n < next_p * next_p || (un < setprimes.size() && setprimes[n])) {
+    if (Globals::verbose) std::cout << "_check_termination() n < LEN_PRIMES (" << n << " < " << LEN_PRIMES << ") ? " << (un < LEN_PRIMES) << std::endl;
+    if (n < next_p * next_p || (un < LEN_PRIMES && is_prime(n))) {
         factor_cache[n] = n;
         factors[n] = 1;
         return true;
@@ -702,8 +710,8 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
     size_t ubase = static_cast<size_t>(base);
 
     if (Globals::verbose) std::cout << "_check_termination() base < next_p * next_p (" << base << " < " << next_p << " * " << next_p << ") ? " << (base < next_p * next_p) << std::endl;
-    if (Globals::verbose) std::cout << "_check_termination() base < setprimes.size() (" << base << " < " << setprimes.size() << ") ? " << (ubase < setprimes.size()) << std::endl;
-    if (base < next_p * next_p || (ubase < setprimes.size() && setprimes[base])) {
+    if (Globals::verbose) std::cout << "_check_termination() base < LEN_PRIMES (" << base << " < " << LEN_PRIMES << ") ? " << (ubase < LEN_PRIMES) << std::endl;
+    if (base < next_p * next_p || (ubase < LEN_PRIMES && is_prime(base))) {
         factor_cache[n] = base;
         factors[base] = exp;
     } else {
@@ -840,7 +848,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
                 if (exact) {
                     //return { static_cast<T>(2 * m), g };
                     return std::pair<T, int>(2 * m, g);
-                } else if (g < setprimes.size() && setprimes[g]) {
+                } else if (g < LEN_PRIMES && is_prime(g)) {
                     return std::pair<T, int>(0, 0);
                 }
             }
@@ -864,7 +872,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
     T tf_max = static_cast<T>(bit_length(n) / 27 + 24);
     if (next_p < tf_max) {
         for (T p = next_p; p < tf_max; p += 2) {
-            if (p < setprimes.size() && setprimes[p]) {
+            if (p < LEN_PRIMES && is_prime(p)) {
                 auto [m_n, t] = remove(n, p);
                 if (t != 0) {
                     n = m_n;
@@ -889,7 +897,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
                                 i *= static_cast<T>(pow(pair.first, pair.second / g));
                             }
                             return std::pair<T, int>(i, g);
-                        } else if (g < setprimes.size() && setprimes[g]) {
+                        } else if (g < LEN_PRIMES && is_prime(g)) {
                             return std::pair<T, int>(0, 0);
                         }
                     }
@@ -1009,7 +1017,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                 ps = std::vector<long long>(aryprimes.begin() + idx_low, (idx_high > 0) ? aryprimes.begin() + idx_high : aryprimes.end());
             } else {
                 for (int p = low; p < high_; p += 2) {
-                    if (setprimes[p]) {
+                    if (is_prime(p)) {
                         ps.push_back(p);
                     }
                 }
@@ -1041,7 +1049,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                 if (Globals::verbose) std::cout << "pollard_pm1(n=" << n << ", B=" << low << ", seed=" << high_ << ") returned c=" << c << std::endl;
                 if (c) {
                     std::vector<long long> ps;
-                    if (c < next_p * next_p || setprimes[c]) {
+                    if (c < next_p * next_p || is_prime(c)) {
                         ps.push_back(c);
                     } else {
                         std::map<long long, int> factors_map = factorint(c, call_depth + 1);
@@ -1064,7 +1072,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                 if (Globals::verbose) std::cout << "pollard_rho(n=" << n << ", retries=1, max_steps=" << low << ", seed=" << high_ << ") returned c = " << c << std::endl;
                 if (c) {
                     std::vector<long long> ps;
-                    if (c < next_p * next_p || setprimes[c]) {
+                    if (c < next_p * next_p || is_prime(c)) {
                         ps.push_back(c);
                     } else {
                         std::map<long long, int> factors_map = factorint(c, call_depth + 1);
@@ -1125,7 +1133,7 @@ T Divisors<T>::pollard_pm1(T n, int B, T a, int retries, unsigned int seed) {
         T aM = a;
 
         for (int p = 2; p <= B; ++p) {
-            if (p == 2 || (p > 2 && p % 2 != 0 && p < setprimes.size() && setprimes[p])) {
+            if (p == 2 || (p > 2 && p % 2 != 0 && p < LEN_PRIMES && is_prime(p))) {
                 int e = static_cast<int>(log(B) / log(p));
                 long long power_pe = 1;
                 for (int j = 0; j < e; ++j) {
@@ -1276,7 +1284,7 @@ bool is_prime(int n) {
 }
 
 uint64_t len() {
-	return setprimes.size();
+	return LEN_PRIMES;
 }
 
 void set_verbose(bool v) {

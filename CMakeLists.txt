@@ -24,6 +24,7 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 project (Divisors CXX)
+set(PROJECT_VERSION "1.0.5")
 
 find_package(Git QUIET)
 include(FetchContent)
@@ -119,6 +120,10 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}/include
     include
+)
+
+target_compile_definitions(Divisors PRIVATE 
+	VERSION_INFO=${PROJECT_VERSION}
 )
 
 target_include_directories(Divisors PUBLIC
