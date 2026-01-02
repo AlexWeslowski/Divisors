@@ -32,7 +32,14 @@ template<ValidIntegerType T>
 void ArrayArray<T>::append(const std::vector<T>& ary) {
     if (resizeable_ && values_index_ + ary.size() >= values_capacity_) {
         values_capacity_ += 2048;
-        values.resize(values_capacity_);
+		try {
+			values.resize(values_capacity_);
+		} catch (const std::bad_alloc& e) {
+			std::cout << "Caught std::bad_alloc during values.resize()\n";
+			std::cout << "Error details: " << e.what() << "\n";
+		} catch (const std::exception& e) {
+			std::cout << "Caught other standard exception: " << e.what() << "\n";
+		}
     }
 
     for (const auto& a : ary) {
@@ -46,7 +53,14 @@ void ArrayArray<T>::append(const std::vector<T>& ary) {
 
     if (resizeable_ && keys_index_ + 2 >= keys_capacity_) {
         keys_capacity_ += 2048;
-        keys.resize(keys_capacity_);
+		try {
+			keys.resize(keys_capacity_);
+		} catch (const std::bad_alloc& e) {
+			std::cout << "Caught std::bad_alloc during keys.resize()\n";
+			std::cout << "Error details: " << e.what() << "\n";
+		} catch (const std::exception& e) {
+			std::cout << "Caught other standard exception: " << e.what() << "\n";
+		}
     }
         
     /*
@@ -96,10 +110,24 @@ size_t ArrayArray<T>::values_len() const {
 }
 
 template<ValidIntegerType T>
+std::string ArrayArray<T>::to_string(const std::vector<int64_t>& vec) const {
+    if (vec.empty()) {
+        return "[]";
+    }
+    std::stringstream ss;
+    ss << "[";
+    std::copy(vec.begin(), vec.end() - 1, std::ostream_iterator<int64_t>(ss, ", "));
+    ss << vec.back();
+    ss << "]";
+    return ss.str();
+}
+
+template<ValidIntegerType T>
 std::vector<T> ArrayArray<T>::get(size_t idx) const {
     size_t key_idx = 2 * idx;
     if (Globals::verbose) std::cout << "ArrayArray::get() size_ = " << size_ << ", keys_index_ = " << keys_index_ << ", values_index_ = " << values_index_ << std::endl;
     if (Globals::verbose) std::cout << "ArrayArray::get() key_idx = " << key_idx << ", idx = " << idx << ", keys[" << key_idx << "] = " << keys[key_idx] << ", keys[" << (key_idx + 1) << "] = " << keys[key_idx + 1] << std::endl;
+	if (Globals::verbose) std::cout << "ArrayArray::get() key_idx + 1 >= keys_index_ ? " << (key_idx + 1 >= keys_index_) << ", keys[key_idx] == -1 ? " << (keys[key_idx] == -1) << ", keys[key_idx + 1] == -1 ? " << (keys[key_idx + 1] == -1) << std::endl;
     if (key_idx >= keys_index_ || key_idx + 1 >= keys_index_ || keys[key_idx] == -1 || keys[key_idx + 1] == -1) {
         return {}; 
     }
@@ -108,6 +136,7 @@ std::vector<T> ArrayArray<T>::get(size_t idx) const {
         throw std::out_of_range("Invalid indices in keys vector.");
     }
     */
+	if (Globals::verbose) std::cout << "ArrayArray::get() returning " << to_string(std::vector<int64_t>(values.begin() + keys[key_idx], values.begin() + keys[key_idx + 1] + 1)) << std::endl;
     return std::vector<int64_t>(values.begin() + keys[key_idx], values.begin() + keys[key_idx + 1] + 1);
 }
 

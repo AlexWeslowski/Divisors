@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for Divisors, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.15)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -24,7 +24,7 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 project (Divisors CXX)
-set(PROJECT_VERSION "1.0.5")
+set(PROJECT_VERSION "1.0.6")
 
 find_package(Git QUIET)
 include(FetchContent)
@@ -40,6 +40,8 @@ get_filename_component(PARENT_DIR "${PROJECT_SOURCE_DIR}" DIRECTORY)
 get_filename_component(PARENT_DIR "${PARENT_DIR}" DIRECTORY)
 set(REPOS
     "cppalliance/int128/include/boost=boost"
+	"boostorg/dynamic_bitset/tree/develop/include/boost=boost"
+	"boostorg/config/tree/develop/include/boost=boost"
     "jbapple/128-bit-literals=128-bit-literals"
     "int128-libraries/abslint128/include=abslint128"
     "int128-libraries/abslint128/src=abslint128"

@@ -7,7 +7,7 @@ from setuptools import setup, Extension
 # FOR /R . %f IN (include\*.h) DO git add "%f"
 # 
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 # The main interface is through Pybind11Extension.
 # * You can add cxx_std=11/14/17, and then build_ext can be removed.
@@ -19,16 +19,15 @@ __version__ = "1.0.5"
 #   reproducible builds (https://github.com/pybind/python_example/pull/53)
 
 # 
-# Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
+# Scripts\pip.exe install git+https://github.com/AlexWeslowski/Divisors.git
 # 
-
 
 ext_modules = [
     #Extension(
     Pybind11Extension(
         "divisors",
         sources=["src/Globals.cpp", "src/ArrayArray.cpp", "src/Combinations.cpp", "src/CombinationsIterator.cpp", "src/Point.cpp", "src/Divisors.cpp"],
-        include_dirs=['src', 'include', 'include/pybind11', 'include/python', 'include/primesieve'],
+        include_dirs=['src', 'include', 'include/pybind11', 'include/python', 'include/primesieve', 'include/boost'],
         library_dirs=["lib"],
         libraries=["primesieve"],
         define_macros=[("VERSION_INFO", __version__)],

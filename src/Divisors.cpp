@@ -24,6 +24,10 @@ Divisors<T>::Divisors() {
     if (bln_init) {
         return;
     }
+	if (false) {
+		std::cout << "Divisors() bln_init = " << bln_init << "\n";
+		std::cout << "Divisors() setprimes.size() = " << setprimes.size() << "\n";
+	}
     /*
     import sympy
     import math
@@ -207,24 +211,70 @@ Divisors<T>::Divisors() {
     small_factor_cache[98][7] = 2;
     small_factor_cache[99][3] = 2;
     small_factor_cache[99][11] = 1;
+	
+	init_primes(0, LEN_SET_PRIMES + LEN_DYN_PRIMES);
+	
+	bln_init = true;
+}
 
-
-    setprimes[0] = false;
-    setprimes[2/2] = true;
-    setprimes[3/2] = true;
-    setprimes[4/2] = false;
+template<ValidIntegerType T>
+void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
+	/*
+	if (b/2 <= setprimes.size()) {
+		return;
+	}
+	*/
+	
+	if (a < 5) {
+		setprimes[0] = false;
+		setprimes[2/2] = true;
+		setprimes[3/2] = true;
+		setprimes[4/2] = false;
+	}
 
     primesieve::iterator it;
     uint64_t p = it.next_prime();
-    for (; p < LEN_PRIMES; p = it.next_prime()) {
-        aryprimes.push_back(p);
-        setprimes[p/2] = true;
+	int64_t imaxp = 1;
+	if (aryprimes.size() > 0) {
+		imaxp = aryprimes.back();
+	}
+	T sqrt_b = isqrt3a(b);
+	if (false) {
+		std::cout << "init_primes() a = " << a << ", b = " << b << "\n";
+		std::cout << "init_primes() setprimes.size() = " << setprimes.size() << "\n";
+		std::cout << "init_primes() aryprimes.size() = " << aryprimes.size() << "\n";	
+		std::cout << "init_primes() imaxp = " << imaxp << "\n";	
+		std::cout << "init_primes() b - 2*setprimes.size() = " << (b - 2*setprimes.size()) << "\n";
+		std::cout << "init_primes() b - imaxp = " << (b - imaxp) << "\n";	
+	}
+    for (; p < b; p = it.next_prime()) {
+		if (p <= sqrt_b && p > imaxp) {
+			aryprimes.push_back(p);
+		}
+		if (p/2 < setprimes.size()) {
+			setprimes[p/2] = true;
+		} else {
+			dynprimes[p/2 - setprimes.size()] = true;
+		}
     }
 
-    divisors_cache = ArrayArray<T>(isqrt3a(LEN_PRIMES), true);
-    for (int i = 0; i < isqrt3a(LEN_PRIMES); i++) {
-        divisors_cache.push_back(divisors(i));
-    }
+	try {
+		divisors_cache = ArrayArray<T>(sqrt_b, true);
+		divisors_cache.push_back({0});
+		divisors_cache.push_back({1});
+	} catch (const std::bad_alloc& e) {
+		std::cout << "Caught std::bad_alloc during divisors_cache init\n";
+		std::cout << "Error details: " << e.what() << "\n";
+		return;
+	} catch (const std::exception& e) {
+		std::cout << "Caught std::exception: " << e.what() << "\n";
+		return;
+	} catch (...) {
+		std::cout << "Caught an unknown exception.\n";
+	}
+	for (int i = 2; i <= sqrt_b; i++) {
+		divisors_cache.push_back(divisors(i));
+	}
     if (Globals::verbose) std::cout << "divisors_cache.size() = " << divisors_cache.size() << ", divisors_cache.values_size() = " << divisors_cache.values_size() << std::endl;
 
     //std::vector<int> aryprimes;
@@ -283,12 +333,32 @@ Divisors<T>::Divisors() {
     }
     */
 
-    bln_init = true;
 }
 
 template<ValidIntegerType T>
-Divisors<T>& Divisors<T>::get_instance() {
+Divisors<T>& Divisors<T>::get_instance(int64_t n) {
     static Divisors<T> instance;
+	if (n/2 > setprimes.size() + dynprimes.size()) {
+		uint64_t ioldset = static_cast<uint64_t>(setprimes.size() - 1);
+		uint64_t iolddyn = static_cast<uint64_t>(dynprimes.size() - 1);
+		double exp = std::ceil(std::log2(static_cast<double>(n - setprimes.size())));
+		if (exp < 26) {
+			exp++;
+		}
+		uint64_t inewdyn = static_cast<uint64_t>(std::pow(2.0, exp));
+		try {
+			//std::cout << "get_instance(" << n << ") resizing from " << iolddyn << " to " << (inewdyn/2 + 1) << "\n";
+			dynprimes.resize(inewdyn/2 + 1);
+		} catch (const std::bad_alloc& e) {
+			std::cout << "Caught std::bad_alloc during dynprimes.resize()\n";
+			std::cout << "Error details: " << e.what() << "\n";
+		} catch (const std::exception& e) {
+			std::cout << "Caught std::exception: " << e.what() << "\n";
+		} catch (...) {
+			std::cout << "Caught an unknown exception.\n";
+		}
+		instance.init_primes(ioldset + iolddyn, ioldset + inewdyn);
+	}
     return instance;
 }
 
@@ -500,7 +570,12 @@ assert(div.is_prime(5))
 */
 template<ValidIntegerType T>
 bool Divisors<T>::is_prime(T n) {
-    return (n == 2) || ((n % 2 == 1) && setprimes[n/2]);
+	if (n/2 < setprimes.size()) {
+		return (n == 2) || ((n % 2 == 1) && setprimes[n/2]);
+	} else {
+		return (n == 2) || ((n % 2 == 1) && dynprimes[n/2 - setprimes.size()]);
+	}
+	
 }
     
 template<ValidIntegerType T>
@@ -517,15 +592,19 @@ template<ValidIntegerType T>
 std::vector<T> Divisors<T>::divisors(T n) {
     T abs_n = n < 0 ? -n : n;
     if (is_prime(n)) {
+		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, " << n << " }" << std::endl;
         return { 1, n };
     }
     if (n % 2 == 0 && is_prime(n/2)) {
+		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, 2, " << n/2 << ", " << n << " }" << std::endl;
         return { 1, 2, n/2, n };
     }
     if (n % 3 == 0 && is_prime(n/3)) {
+		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, 3, " << n/3 << ", " << n << " }" << std::endl;
         return { 1, 3, n/3, n };
     }
     if (n < divisors_cache.size()) {
+		if (Globals::verbose) std::cout << "divisors(" << n << ") returning from divisors_cache " << to_string<T>(divisors_cache.get(n)) << std::endl;
         return divisors_cache.get(n);
     }
     std::vector<T> vec = _divisors(abs_n);
@@ -539,8 +618,7 @@ template<ValidIntegerType T>
 std::vector<T> Divisors<T>::_rec_gen(T n, const std::map<T, int>& factors, const std::vector<T>& keys) {
     if (n == static_cast<int64_t>(keys.size())) {
         return { 1 };
-    }
-    else {
+    } else {
         std::vector<T> pows;
         pows.push_back(1);
         for (int64_t i = 0; i < factors.at(keys[n]); ++i) {
@@ -563,7 +641,8 @@ std::vector<T> Divisors<T>::_divisors(T n) {
     if (n == 1) return { 1 };
 
     const std::map<T, int> factors = factorint(n, 0);
-
+	if (Globals::verbose) std::cout << "factorint(" << n << ") returned " << to_string<T, int>(factors) << std::endl;
+	
     std::vector<T> ps;
     for (const auto& pair : factors) {
         ps.push_back(pair.first);
@@ -691,8 +770,8 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
     size_t un = static_cast<size_t>(n);
 
     if (Globals::verbose) std::cout << "_check_termination() n < next_p * next_p (" << n << " < " << next_p << " * " << next_p << ") ? " << (n < next_p * next_p) << std::endl;
-    if (Globals::verbose) std::cout << "_check_termination() n < LEN_PRIMES (" << n << " < " << LEN_PRIMES << ") ? " << (un < LEN_PRIMES) << std::endl;
-    if (n < next_p * next_p || (un < LEN_PRIMES && is_prime(n))) {
+    if (Globals::verbose) std::cout << "_check_termination() n/2 < LEN_SET_PRIMES + dynprimes.size() (" << n/2 << " < " << LEN_SET_PRIMES + dynprimes.size() << ") ? " << (un/2 < LEN_SET_PRIMES + dynprimes.size()) << std::endl;
+    if (n < next_p * next_p || (un/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(n))) {
         factor_cache[n] = n;
         factors[n] = 1;
         return true;
@@ -710,8 +789,8 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
     size_t ubase = static_cast<size_t>(base);
 
     if (Globals::verbose) std::cout << "_check_termination() base < next_p * next_p (" << base << " < " << next_p << " * " << next_p << ") ? " << (base < next_p * next_p) << std::endl;
-    if (Globals::verbose) std::cout << "_check_termination() base < LEN_PRIMES (" << base << " < " << LEN_PRIMES << ") ? " << (ubase < LEN_PRIMES) << std::endl;
-    if (base < next_p * next_p || (ubase < LEN_PRIMES && is_prime(base))) {
+    if (Globals::verbose) std::cout << "_check_termination() base < LEN_SET_PRIMES + dynprimes.size() (" << base << " < " << LEN_SET_PRIMES + dynprimes.size() << ") ? " << (ubase < LEN_SET_PRIMES + dynprimes.size()) << std::endl;
+    if (base < next_p * next_p || (ubase/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(base))) {
         factor_cache[n] = base;
         factors[base] = exp;
     } else {
@@ -848,7 +927,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
                 if (exact) {
                     //return { static_cast<T>(2 * m), g };
                     return std::pair<T, int>(2 * m, g);
-                } else if (g < LEN_PRIMES && is_prime(g)) {
+                } else if (g/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(g)) {
                     return std::pair<T, int>(0, 0);
                 }
             }
@@ -872,7 +951,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
     T tf_max = static_cast<T>(bit_length(n) / 27 + 24);
     if (next_p < tf_max) {
         for (T p = next_p; p < tf_max; p += 2) {
-            if (p < LEN_PRIMES && is_prime(p)) {
+            if (p/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(p)) {
                 auto [m_n, t] = remove(n, p);
                 if (t != 0) {
                     n = m_n;
@@ -897,7 +976,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
                                 i *= static_cast<T>(pow(pair.first, pair.second / g));
                             }
                             return std::pair<T, int>(i, g);
-                        } else if (g < LEN_PRIMES && is_prime(g)) {
+                        } else if (g/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(g)) {
                             return std::pair<T, int>(0, 0);
                         }
                     }
@@ -1133,7 +1212,7 @@ T Divisors<T>::pollard_pm1(T n, int B, T a, int retries, unsigned int seed) {
         T aM = a;
 
         for (int p = 2; p <= B; ++p) {
-            if (p == 2 || (p > 2 && p % 2 != 0 && p < LEN_PRIMES && is_prime(p))) {
+            if (p == 2 || (p > 2 && p % 2 != 0 && p/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(p))) {
                 int e = static_cast<int>(log(B) / log(p));
                 long long power_pe = 1;
                 for (int j = 0; j < e; ++j) {
@@ -1225,66 +1304,79 @@ T Divisors<T>::pollard_rho(T n1, T s, T a1, int retries, unsigned int seed, int6
 
 
 
-std::vector<int64_t> divisors(int n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+std::vector<int64_t> divisors(int64_t n) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.divisors(n);
 }
 
-std::pair<int64_t, int> _factorint_small(int n, int p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+std::map<int64_t, int> factorint(int64_t n) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+    return div.factorint(n, 0);    
+}    
+
+std::pair<int64_t, int> _factorint_small(int64_t n, int p) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     std::map<int64_t, int> factors;
     auto [remaining_n, next_p] = div._factorint_small(factors, n, 2 << 14, 600, p);
     return { remaining_n, next_p };
 }
 
-std::pair<int64_t, int> _perfect_power(int n, int p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+std::pair<int64_t, int> _perfect_power(int64_t n, int p) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div._perfect_power(n, p, 0);
 }
 
 //std::pair<T, bool> _trial(std::map<T, int>& factors, T n, const std::vector<T>& candidates) {
 std::pair<int64_t, bool> _trial(std::map<int64_t, int>& factors, int64_t n, const std::vector<int64_t>& candidates) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div._trial(factors, n, candidates);
 }
 
 //_check_termination(std::map<T, int>& factors, T n, T next_p, int call_depth) {
 bool _check_termination(std::map<int64_t, int>& factors, int64_t n, int64_t next_p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div._check_termination(factors, n, next_p, 1);
 }
 
 //pollard_pm1(n, B=low, seed=high_)
 //pollard_pm1(T n, int B = 10, T a = 2, int retries = 0, unsigned int seed = 1234) 
 int64_t pollard_pm1(int64_t n, int B, unsigned int seed) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.pollard_pm1(n, B, 2, 0, seed);
 }
 
 //pollard_rho(n, retries=1, max_steps=low, seed=high_)
 //pollard_rho(T n1, T s = 2, T a1 = 1, int retries = 5, unsigned int seed = 1234, uint64_t max_steps = 0)
 int64_t pollard_rho(int64_t n, uint64_t max_steps, unsigned int seed) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.pollard_rho(n, 2, 1, 1, seed, max_steps);
 }
 
-int64_t isqrt(int n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+int64_t isqrt(int64_t n) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.isqrt3a(n);
 }
 
-std::pair<int64_t, int64_t> sqrtrem(int n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+std::pair<int64_t, int64_t> sqrtrem(int64_t n) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.sqrtrem(n);
 }
 
-bool is_prime(int n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance();
+/* 
+import divisors as div
+import sympy
+[n for n in range(134217728 + 1, 134217728 + 65, 2) if div.isprime(n)]
+[n for n in range(268435456 + 1, 268435456 + 65, 2) if div.isprime(n)]
+[n for n in range(134217728 + 1, 134217728 + 65, 2) if sympy.isprime(n)]
+[n for n in range(268435456 + 1, 268435456 + 65, 2) if sympy.isprime(n)]
+*/
+bool is_prime(int64_t n) {
+    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.is_prime(n);
 }
 
 uint64_t len() {
-	return LEN_PRIMES;
+	return setprimes.size() - 1 + dynprimes.size() - 1;
 }
 
 void set_verbose(bool v) {
@@ -1296,6 +1388,8 @@ void set_verbose(bool v) {
 
 
 Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
+Scripts\pip.exe install D:\C++\AlexWeslowski\Divisors
+Scripts\pip.exe install E:\C++\AlexWeslowski\Divisors
 
 import sympy
 import sympy.external.gmpy
@@ -1326,7 +1420,7 @@ dt = time.time() - t1
 # 2^24 = 16777216 = 0.005-0.007 seconds
 t1 = time.time()
 div = divisors.Divisors()
-div = divisors.Divisors.get_instance()
+div = divisors.Divisors.get_instance(ap)
 div.is_prime(11)
 div.is_prime(13033927)
 dt = time.time() - t1
@@ -1358,7 +1452,7 @@ def time_sympy_ntheory_divisors(ary):
     print_time("sympy.ntheory.divisors()", len(ary), time.time() - t1)
 
 def time_divisors(ary):
-    div = divisors.Divisors.get_instance()
+    div = divisors.Divisors.get_instance(max(ary))
     t1 = time.time()
     for i in range(0, len(ary)):
         sd = div.divisors(ary[i])
@@ -1537,8 +1631,11 @@ PYBIND11_MODULE(divisors, m) {
     m.doc() = "divisors made with pybind11";
 
     m.def("divisors", &divisors);
+    m.def("factorint", &factorint);
     m.def("is_prime", &is_prime);
+    m.def("isprime", &is_prime);
     m.def("set_verbose", &set_verbose);
+    m.def("setverbose", &set_verbose);
     m.def("len", &len);
     m.def("size", &len);
 

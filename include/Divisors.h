@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <numeric> 
 #include <bitset>
+#include <../include/boost/dynamic_bitset.hpp>
 #include <utility>
 #include <limits>
 #include <random>
@@ -37,13 +38,15 @@ static bool bln_init = false;
 // 2^26 =  67108864
 // 2^27 = 134217728
 // 2^28 = 268435456
-const int LEN_PRIMES = 268435456;
-const int MAX_RECURSION = 10;
+const int LEN_SET_PRIMES = 268435456;
+const int LEN_DYN_PRIMES = 134217728;
+const int MAX_RECURSION = 12;
 
 static std::vector<std::map<int64_t, int>> small_factor_cache(100);
 static ArrayArray<int64_t> divisors_cache;
 static std::map<int64_t, int> factor_cache;
-static std::bitset<LEN_PRIMES/2 + 1> setprimes;
+static std::bitset<LEN_SET_PRIMES/2 + 1> setprimes;
+static boost::dynamic_bitset<> dynprimes(LEN_DYN_PRIMES/2 + 1);
 static std::vector<int64_t> aryprimes;
 static std::map<int64_t, size_t> idxprimes;
 
@@ -318,7 +321,8 @@ private:
 
 public:
     Divisors();
-    static Divisors<T>& get_instance();
+    void init_primes(uint64_t a, uint64_t b);
+    static Divisors<T>& get_instance(int64_t n);
     void set_verbose(bool bln);
     constexpr int __countr_zero(T __x) noexcept;
     int bit_scan1(T n);

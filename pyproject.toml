@@ -2,13 +2,27 @@
 requires = [
     "setuptools>=42",
     "pybind11>=2.10.0",
+	#"scikit-build-core>=0.11", 
+	#"py-build-cmake>=0.2.0",
 ]
 build-backend = "setuptools.build_meta"
-
+#build-backend = "scikit_build_core.build"
+#build-backend = "py_build_cmake.build_backend"
 
 [tool.cibuildwheel]
 test-command = "python {project}/tests/test.py"
 test-skip = "*universal2:arm64"
+
+#[tool.scikit-build]
+#cmake.build-type = "Release"
+#cmake.args = ["-DBUILD_TESTING=OFF"]
+
+#[tool.py-build-cmake]
+#cmake_with_sdist = true
+
+#[tool.py-build-cmake.cmake]
+#build-type = "Release"
+#generator = "Ninja"
 
 [tool.ruff]
 target-version = "current"

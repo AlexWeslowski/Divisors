@@ -32,6 +32,7 @@ public:
     size_t len() const;
     size_t values_size() const;
     size_t values_len() const;
+	std::string to_string(const std::vector<int64_t>& vec) const;
     std::vector<T> get(size_t idx) const;
     std::vector<std::vector<T>> to_array() const;
     std::vector<std::vector<T>> to_list() const;
