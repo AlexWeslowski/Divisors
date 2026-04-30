@@ -8,14 +8,14 @@ template <ValidIntegerType T>
 CombinationsIterator<T>::CombinationsIterator() {}
 
 template <ValidIntegerType T>
-CombinationsIterator<T>::CombinationsIterator(const std::shared_ptr<ArrayArray<T>> aryary) : aryary_(aryary), index(0) {}
+CombinationsIterator<T>::CombinationsIterator(const std::shared_ptr<ArrayArray<T, COMBINATIONS_KEYS_LEN, COMBINATIONS_VALUES_LEN>> aryary) : aryary_(aryary), index(0) {}
 
 template <ValidIntegerType T>
-std::vector<T> CombinationsIterator<T>::next() {
+vec24<T> CombinationsIterator<T>::next() {
     if (index >= aryary_->size()) {
         throw pybind11::stop_iteration();
     }
-    return aryary_->get(index++);
+    return aryary_->get<vec24<T>>(index++);
 }
 
 

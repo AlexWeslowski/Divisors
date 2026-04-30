@@ -8,6 +8,7 @@
 #include <pybind11/chrono.h>
 #include <../include/ValidInteger.h>
 #include <../include/ArrayArray.h>
+#include <../include/Combinations.h>
 
 
 #ifndef COMBINATIONS_ITERATOR_HPP
@@ -17,12 +18,13 @@ template<ValidIntegerType T>
 class CombinationsIterator {
 public:
     CombinationsIterator();
-    CombinationsIterator(const std::shared_ptr<ArrayArray<T>> aryary);
+    CombinationsIterator(const std::shared_ptr<ArrayArray<T, COMBINATIONS_KEYS_LEN, COMBINATIONS_VALUES_LEN>> aryary);
 
-    std::vector<T> next();
+    //std::vector<T> next();
+	vec24<T> next();
 
 private:
-    const std::shared_ptr<ArrayArray<T>> aryary_;
+    const std::shared_ptr<ArrayArray<T, COMBINATIONS_KEYS_LEN, COMBINATIONS_VALUES_LEN>> aryary_;
     size_t index = 0;
 };
 

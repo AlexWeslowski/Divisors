@@ -22,9 +22,14 @@ if (MSVC)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Werror -Winit-self)
 endif()
+if(MSVC)
+    set_target_properties(my_target PROPERTIES LINK_FLAGS "/STACK:536870912")
+elseif(UNIX)
+    set_target_properties(my_target PROPERTIES LINK_FLAGS "-z stack-size=536870912")
+endif()
 
 project (Divisors CXX)
-set(PROJECT_VERSION "1.0.6")
+set(PROJECT_VERSION "1.1.7")
 
 find_package(Git QUIET)
 include(FetchContent)
@@ -46,6 +51,7 @@ set(REPOS
     "int128-libraries/abslint128/include=abslint128"
     "int128-libraries/abslint128/src=abslint128"
     "abseil/abseil-cpp/absl/numeric=absl"
+	"p-ranav/small_vector/tree/master/include/small_vector=small_vector"
 )
 foreach(REPO ${REPOS}) 
     string(REPLACE "=" ";" ALIST ${REPO})

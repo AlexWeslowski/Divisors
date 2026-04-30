@@ -2,12 +2,13 @@
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup, Extension
 #from setuptools.command.build_ext import build_ext
+import sys
 
 # 
 # FOR /R . %f IN (include\*.h) DO git add "%f"
 # 
 
-__version__ = "1.0.6"
+__version__ = "1.1.7"
 
 # The main interface is through Pybind11Extension.
 # * You can add cxx_std=11/14/17, and then build_ext can be removed.
@@ -22,6 +23,15 @@ __version__ = "1.0.6"
 # Scripts\pip.exe install git+https://github.com/AlexWeslowski/Divisors.git
 # 
 
+STACK_SIZE = 134217728
+STACK_SIZE = 268435456
+STACK_SIZE = 536870912
+extra_link_args = []
+if sys.platform == "win32":
+    extra_link_args.append(f"/STACK:{STACK_SIZE}")
+else:
+    extra_link_args.append(f"-Wl,-z,stack-size={STACK_SIZE}")
+
 ext_modules = [
     #Extension(
     Pybind11Extension(
@@ -31,7 +41,8 @@ ext_modules = [
         library_dirs=["lib"],
         libraries=["primesieve"],
         define_macros=[("VERSION_INFO", __version__)],
-        #extra_compile_args=["-std=c++17"],
+        extra_compile_args=["-std=c++23"],
+        extra_link_args=extra_link_args,
     ),
 ]
 

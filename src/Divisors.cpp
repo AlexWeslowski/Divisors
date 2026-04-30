@@ -18,16 +18,35 @@ namespace __gnu_cxx
 }
 
 
+/*
+void signal_handler(int signum) {
+    std::cout << "Interrupt signal (" << signum << ") received" << std::endl;
+    //std::cout << boost::stacktrace::stacktrace() << std::endl;
+	std::cout << std::stacktrace::current() << std::endl;
+    std::exit(signum);
+}
+*/
 
 template<ValidIntegerType T>
 Divisors<T>::Divisors() {
     if (bln_init) {
         return;
     }
-	if (false) {
-		std::cout << "Divisors() bln_init = " << bln_init << "\n";
-		std::cout << "Divisors() setprimes.size() = " << setprimes.size() << "\n";
+	if (Globals::verbose) {
+		std::cout << "Divisors() bln_init = " << bln_init << std::endl;
+		std::cout << "Divisors() setprimes.size() = " << setprimes.size() << std::endl;
+#ifdef DIVISORS_SMALLVEC
+		std::cout << "Divisors() DIVISORS_SMALLVEC" << std::endl;
+#endif
+#ifdef SMALL
+		std::cout << "Divisors() SMALL" << std::endl;
+#endif
+#ifdef SMALLVEC
+		std::cout << "Divisors() SMALLVEC" << std::endl;
+#endif
 	}
+    //std::signal(SIGSEGV, signal_handler);
+    //std::signal(SIGABRT, signal_handler);
     /*
     import sympy
     import math
@@ -41,6 +60,15 @@ Divisors<T>::Divisors() {
             if i > 0:
                 print(f"small_factor_cache[{n}][{p}] = {i};")
     */
+	
+	small_factor_cache.resize(100);
+	/*
+	for (int i = 0; i < 100; ++i) {
+        small_factor_cache.emplace_back(); 
+    }
+	*/
+	if (Globals::verbose) std::cout << "Divisors() line " << __LINE__ << ", small_factor_cache.size() = " << small_factor_cache.size() << std::endl;
+	
     small_factor_cache[0][1] = 1;
     small_factor_cache[2][2] = 1;
     small_factor_cache[3][3] = 1;
@@ -212,6 +240,28 @@ Divisors<T>::Divisors() {
     small_factor_cache[99][3] = 2;
     small_factor_cache[99][11] = 1;
 	
+	if (true) {
+		setprimes[0] = false;
+		setprimes[2/2] = true;
+		setprimes[3/2] = true;
+		setprimes[4/2] = false;
+		aryprimes.push_back(2);
+		//divisors_cache = ArrayArray<T, DIVISORS_CACHE_KEYS_LEN, DIVISORS_CACHE_VALUES_LEN>(20066, true);
+		//divisors_cache.push_back<1>({0});
+	}
+	
+	if (Globals::verbose) {
+		std::cout << "Divisors() line " << __LINE__ << ", small_factor_cache.size() = " << small_factor_cache.size() << std::endl;
+		std::cout << "Divisors() setprimes.size() = " << setprimes.size() << std::endl;
+		std::cout << "Divisors() aryprimes.size() = " << aryprimes.size() << std::endl;
+		std::cout << "Divisors() dynprimes.size() = " << dynprimes.size() << std::endl;
+		std::cout << "Divisors() DIVISORS_CACHE_KEYS_LEN = " << DIVISORS_CACHE_KEYS_LEN << std::endl;
+		std::cout << "Divisors() DIVISORS_CACHE_VALUES_LEN = " << DIVISORS_CACHE_VALUES_LEN << std::endl;
+		std::cout << "Divisors() divisors_cache.keys_size() = " << divisors_cache.keys_size() << std::endl;
+		std::cout << "Divisors() divisors_cache.values_size() = " << divisors_cache.values_size() << std::endl;
+		std::cout << "Divisors() about to call init_primes() a = 0, b = " << (LEN_SET_PRIMES + LEN_DYN_PRIMES) << ", sqrt_b = " << isqrt3a(LEN_SET_PRIMES + LEN_DYN_PRIMES) << std::endl;
+	}
+
 	init_primes(0, LEN_SET_PRIMES + LEN_DYN_PRIMES);
 	
 	bln_init = true;
@@ -219,6 +269,13 @@ Divisors<T>::Divisors() {
 
 template<ValidIntegerType T>
 void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
+	if (Globals::verbose) {
+		std::cout << "init_primes() a = " << a << ", b = " << b << std::endl;
+		std::cout << "init_primes() setprimes.size() = " << setprimes.size() << std::endl;
+		std::cout << "init_primes() aryprimes.size() = " << aryprimes.size() << std::endl;
+		std::cout << "init_primes() dynprimes.size() = " << dynprimes.size() << std::endl;
+	}
+	
 	/*
 	if (b/2 <= setprimes.size()) {
 		return;
@@ -236,17 +293,23 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
     uint64_t p = it.next_prime();
 	int64_t imaxp = 1;
 	if (aryprimes.size() > 0) {
-		imaxp = aryprimes.back();
+		try {
+			imaxp = aryprimes.back();
+		} catch (const std::out_of_range& oor) {
+			std::cout << "Range exception: " << oor.what() << std::endl;
+			imaxp = 1;
+		} catch (const std::exception& ex) {
+			std::cout << "Standard exception: " << ex.what() << std::endl;
+			imaxp = 1;
+		}
+	}
+	if (Globals::verbose) {
+		std::cout << "init_primes() imaxp = " << imaxp << std::endl;
+		std::cout << "init_primes() b - 2*setprimes.size() = " << (b - 2*setprimes.size()) << std::endl;
+		std::cout << "init_primes() b - imaxp = " << (b - imaxp) << std::endl;
 	}
 	T sqrt_b = isqrt3a(b);
-	if (false) {
-		std::cout << "init_primes() a = " << a << ", b = " << b << "\n";
-		std::cout << "init_primes() setprimes.size() = " << setprimes.size() << "\n";
-		std::cout << "init_primes() aryprimes.size() = " << aryprimes.size() << "\n";	
-		std::cout << "init_primes() imaxp = " << imaxp << "\n";	
-		std::cout << "init_primes() b - 2*setprimes.size() = " << (b - 2*setprimes.size()) << "\n";
-		std::cout << "init_primes() b - imaxp = " << (b - imaxp) << "\n";	
-	}
+	//aryprimes.resize(sqrt_b);
     for (; p < b; p = it.next_prime()) {
 		if (p <= sqrt_b && p > imaxp) {
 			aryprimes.push_back(p);
@@ -258,25 +321,37 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 		}
     }
 
+	//sqrt_b = 8192 + 212;
 	try {
-		divisors_cache = ArrayArray<T>(sqrt_b, true);
-		divisors_cache.push_back({0});
-		divisors_cache.push_back({1});
+		divisors_cache = ArrayArray<T, DIVISORS_CACHE_KEYS_LEN, DIVISORS_CACHE_VALUES_LEN>(sqrt_b, true);
+		//divisors_cache.push_back<std::vector<T>>({0});
+		//divisors_cache.push_back<std::vector<T>>({1});
+		divisors_cache.push_back<boost::container::small_vector<T, 1>>({0});
+		divisors_cache.push_back<boost::container::small_vector<T, 1>>({1});		
 	} catch (const std::bad_alloc& e) {
 		std::cout << "Caught std::bad_alloc during divisors_cache init\n";
-		std::cout << "Error details: " << e.what() << "\n";
+		std::cout << "Error details: " << e.what() << std::endl;
 		return;
 	} catch (const std::exception& e) {
-		std::cout << "Caught std::exception: " << e.what() << "\n";
+		std::cout << "Caught std::exception: " << e.what() << std::endl;
 		return;
 	} catch (...) {
 		std::cout << "Caught an unknown exception.\n";
 	}
 	for (int i = 2; i <= sqrt_b; i++) {
+		//divisors_cache.push_back<DIVISORS_VEC_LEN>(divisors(i));
+		//divisors_cache.push_back_small_vector<DIVISORS_VEC_LEN>(divisors(i));
 		divisors_cache.push_back(divisors(i));
 	}
-    if (Globals::verbose) std::cout << "divisors_cache.size() = " << divisors_cache.size() << ", divisors_cache.values_size() = " << divisors_cache.values_size() << std::endl;
-
+	if (Globals::verbose) {
+		std::cout << "init_primes() setprimes.size() = " << setprimes.size() << std::endl;
+		std::cout << "init_primes() aryprimes.size() = " << aryprimes.size() << std::endl;
+		std::cout << "init_primes() divisors_cache.size() = " << divisors_cache.size() << ", divisors_cache.values_size() = " << divisors_cache.values_size() << std::endl;
+	}
+	
+	//size_t bytes = get_current_rss();
+    //std::cout << "init_primes() memory = " << std::fixed << std::setprecision(2) << bytes / (1024.0 * 1024.0) << " MB" << std::endl;
+	
     //std::vector<int> aryprimes;
     //primesieve::generate_primes(LEN_PRIMES, &aryprimes);
 
@@ -336,8 +411,8 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 }
 
 template<ValidIntegerType T>
-Divisors<T>& Divisors<T>::get_instance(int64_t n) {
-    static Divisors<T> instance;
+bool Divisors<T>::resize(int64_t n) {
+	if (Globals::verbose) std::cout << "resize(" << n << "), setprimes.size() = " << setprimes.size() << ", dynprimes.size() = " << dynprimes.size() << std::endl;
 	if (n/2 > setprimes.size() + dynprimes.size()) {
 		uint64_t ioldset = static_cast<uint64_t>(setprimes.size() - 1);
 		uint64_t iolddyn = static_cast<uint64_t>(dynprimes.size() - 1);
@@ -347,18 +422,32 @@ Divisors<T>& Divisors<T>::get_instance(int64_t n) {
 		}
 		uint64_t inewdyn = static_cast<uint64_t>(std::pow(2.0, exp));
 		try {
-			//std::cout << "get_instance(" << n << ") resizing from " << iolddyn << " to " << (inewdyn/2 + 1) << "\n";
+			//std::cout << "resize(" << n << ") resizing from " << iolddyn << " to " << (inewdyn/2 + 1) << std::endl;
 			dynprimes.resize(inewdyn/2 + 1);
 		} catch (const std::bad_alloc& e) {
 			std::cout << "Caught std::bad_alloc during dynprimes.resize()\n";
-			std::cout << "Error details: " << e.what() << "\n";
+			std::cout << "Error details: " << e.what() << std::endl;
 		} catch (const std::exception& e) {
-			std::cout << "Caught std::exception: " << e.what() << "\n";
+			std::cout << "Caught std::exception: " << e.what() << std::endl;
 		} catch (...) {
 			std::cout << "Caught an unknown exception.\n";
 		}
-		instance.init_primes(ioldset + iolddyn, ioldset + inewdyn);
+		init_primes(ioldset + iolddyn, ioldset + inewdyn);
+		return true;
 	}
+	return false;
+}
+
+template<ValidIntegerType T>
+Divisors<T>& Divisors<T>::get_instance(int64_t n) {
+	if (Globals::verbose) {
+		std::cout << "get_instance(), n = " << n << ", bln_init = " << bln_init << std::endl;
+		std::cout << "get_instance(), DIVISORS_CACHE_KEYS_LEN = " << DIVISORS_CACHE_KEYS_LEN << std::endl;
+		std::cout << "get_instance(), DIVISORS_CACHE_VALUES_LEN = " << DIVISORS_CACHE_VALUES_LEN << std::endl;
+	}
+	bool bln = bln_init;
+    static Divisors<T> instance;
+	instance.resize(n);
     return instance;
 }
 
@@ -570,6 +659,7 @@ assert(div.is_prime(5))
 */
 template<ValidIntegerType T>
 bool Divisors<T>::is_prime(T n) {
+	if (Globals::verbose) std::cout << "is_prime(" << n << "), setprimes.size() = " << setprimes.size() << std::endl;
 	if (n/2 < setprimes.size()) {
 		return (n == 2) || ((n % 2 == 1) && setprimes[n/2]);
 	} else {
@@ -589,43 +679,59 @@ std::pair<T, int> Divisors<T>::remove(T n, T p) {
 }
     
 template<ValidIntegerType T>
-std::vector<T> Divisors<T>::divisors(T n) {
+vec_divisors<T> Divisors<T>::divisors(T n) {
     T abs_n = n < 0 ? -n : n;
+	resize(static_cast<int64_t>(n));
     if (is_prime(n)) {
 		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, " << n << " }" << std::endl;
-        return { 1, n };
+		vec_divisors<T> result;
+        result.push_back(1);
+		result.push_back(n);
+		return result;
     }
     if (n % 2 == 0 && is_prime(n/2)) {
 		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, 2, " << n/2 << ", " << n << " }" << std::endl;
-        return { 1, 2, n/2, n };
+		vec_divisors<T> result;
+        result.push_back(1);
+		result.push_back(2);
+		result.push_back(n/2);
+		result.push_back(n);
+		return result;
     }
     if (n % 3 == 0 && is_prime(n/3)) {
 		if (Globals::verbose) std::cout << "divisors(" << n << ") returning { 1, 3, " << n/3 << ", " << n << " }" << std::endl;
-        return { 1, 3, n/3, n };
+		vec_divisors<T> result;
+        result.push_back(1);
+		result.push_back(3);
+		result.push_back(n/3);
+		result.push_back(n);
+		return result;
     }
     if (n < divisors_cache.size()) {
-		if (Globals::verbose) std::cout << "divisors(" << n << ") returning from divisors_cache " << to_string<T>(divisors_cache.get(n)) << std::endl;
-        return divisors_cache.get(n);
+		if (Globals::verbose) std::cout << "divisors(" << n << ") returning from divisors_cache " << to_string<T>(divisors_cache.get<vec_divisors<T>>(n)) << std::endl;
+        return divisors_cache.get<vec_divisors<T>>(n);
     }
-    std::vector<T> vec = _divisors(abs_n);
+    vec_divisors<T> vec = _divisors(abs_n);
 	if (Globals::verbose) std::cout << "divisors(n=" << n << ") returning " << to_string<T>(vec) << std::endl;
     std::sort(vec.begin(), vec.end());
     return vec;
 }
 
-//cannot convert argument 2 from 'std::map<T,int, ...>' to 'const std::map<int64_t,int64_t, ...> &
+//cannot convert argument 2 from 'boost::container::flat_map<T,int, ...>' to 'const std::map<int64_t,int64_t, ...> &
 template<ValidIntegerType T>
-std::vector<T> Divisors<T>::_rec_gen(T n, const std::map<T, int>& factors, const std::vector<T>& keys) {
+vec_divisors<T> Divisors<T>::_rec_gen(T n, const map_t_int<T, int>& factors, const vec_divisors<T>& keys) {
     if (n == static_cast<int64_t>(keys.size())) {
-        return { 1 };
+		vec_divisors<T> result;
+        result.push_back(1);
+		return result;
     } else {
-        std::vector<T> pows;
+        vec_divisors<T> pows;
         pows.push_back(1);
         for (int64_t i = 0; i < factors.at(keys[n]); ++i) {
             pows.push_back(pows.back() * keys[n]);
         }
-        std::vector<T> next_generation = _rec_gen(n + 1, factors, keys);
-        std::vector<T> result;
+        vec_divisors<T> next_generation = _rec_gen(n + 1, factors, keys);
+        vec_divisors<T> result;
         for (T q : next_generation) {
             for (T p : pows) {
                 result.push_back(p * q);
@@ -636,23 +742,23 @@ std::vector<T> Divisors<T>::_rec_gen(T n, const std::map<T, int>& factors, const
 }
 
 template<ValidIntegerType T>
-std::vector<T> Divisors<T>::_divisors(T n) {
+vec_divisors<T> Divisors<T>::_divisors(T n) {
     if (n == 0) return { 0 };
     if (n == 1) return { 1 };
 
-    const std::map<T, int> factors = factorint(n, 0);
+    const map_t_int<T, int> factors = factorint(n, 0);
 	if (Globals::verbose) std::cout << "factorint(" << n << ") returned " << to_string<T, int>(factors) << std::endl;
 	
-    std::vector<T> ps;
+    vec_divisors<T> ps;
     for (const auto& pair : factors) {
         ps.push_back(pair.first);
     }
 
-    return  _rec_gen(0, factors, ps);
+    return _rec_gen(0, factors, ps);
 }
 
 template<ValidIntegerType T>
-std::pair<T, T> Divisors<T>::_factorint_small(std::map<T, int>& factors, T n, T limit, int fail_max, T next_p) {
+std::pair<T, T> Divisors<T>::_factorint_small(map_t_int<T, int>& factors, T n, T limit, int fail_max, T next_p) {
     if (Globals::verbose) std::cout << "_factorint_small(factors=" << to_string<T, int>(factors) << ", n = " << n << ", next_p = " << next_p << ")" << std::endl;
 
     auto done = [&](T current_n, T d) -> std::pair<T, T> {
@@ -760,7 +866,7 @@ std::pair<T, T> Divisors<T>::_factorint_small(std::map<T, int>& factors, T n, T 
 }
 
 template<ValidIntegerType T>
-bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, int call_depth) {
+bool Divisors<T>::_check_termination(map_t_int<T, int>& factors, T n, T next_p, int call_depth) {
     if (Globals::verbose) std::cout << "_check_termination(factors=" << to_string<T, int>(factors) << ", n = " << n << ", next_p = " << next_p << ", call_depth=" << call_depth << ")" << std::endl;
 
     if (n == 1 || call_depth >= MAX_RECURSION) {
@@ -794,7 +900,7 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
         factor_cache[n] = base;
         factors[base] = exp;
     } else {
-        std::map<T, int> facs = factorint(base, call_depth + 1);
+        map_t_int<T, int> facs = factorint(base, call_depth + 1);
         for (const auto& pair : facs) {
             factors[pair.first] = exp * pair.second;
         }
@@ -804,8 +910,8 @@ bool Divisors<T>::_check_termination(std::map<T, int>& factors, T n, T next_p, i
 
 
 template<ValidIntegerType T>
-std::pair<T, bool> Divisors<T>::_trial(std::map<T, int>& factors, T n, const std::vector<T>& candidates) {
-    if (Globals::verbose) std::cout << "_trial(factors=" << to_string<T, int>(factors) << ", n = " << n << ", candidates = " << to_string<T>(candidates) << ")" << std::endl;
+std::pair<T, bool> Divisors<T>::_trial(map_t_int<T, int>& factors, T n, const vec_ps& candidates) {
+    if (Globals::verbose) std::cout << "_trial(factors=" << to_string<T, int>(factors) << ", n = " << n << ", candidates = " << to_string<T, CANDIDATES_VEC_LEN>(candidates) << ")" << std::endl;
 
     auto nfactors_before = factors.size();
 
@@ -830,7 +936,7 @@ std::pair<T, bool> Divisors<T>::_trial(std::map<T, int>& factors, T n, const std
 }
 
 template<ValidIntegerType T>
-std::pair<T, int> Divisors<T>::_perfect_power_done(T current_n, std::map<T, int>& current_factors, int current_g, int current_multi) {
+std::pair<T, int> Divisors<T>::_perfect_power_done(T current_n, map_t_int<T, int>& current_factors, int current_g, int current_multi) {
     if (current_g == 0) {
         current_g = current_multi;
     } else {
@@ -859,12 +965,12 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
         return { 0, 0 };
     }
 
-    std::map<T, int> factors;
+    map_t_int<T, int> factors;
     int g = 0;
     int multi = 1;
 
     /*
-    std::pair<T, int> done = [&](T current_n, std::map<T, int>& current_factors, int current_g, int current_multi) {
+    std::pair<T, int> done = [&](T current_n, map_t_int<T, int>& current_factors, int current_g, int current_multi) {
         if (current_g == 0) current_g = current_multi;
         else current_g = std::gcd(current_g, current_multi);
 
@@ -889,7 +995,7 @@ std::pair<T, int> Divisors<T>::_perfect_power(T n, T next_p, int call_depth) {
             return std::pair<T, int>(0, 0);
         }
 
-        std::vector<int> factors_values;
+        vec_divisors<T> factors_values;
         for (const auto& pair : factors) {
             factors_values.push_back(pair.second);
         }
@@ -1007,7 +1113,7 @@ size_t Divisors<T>::find(T p) {
 }
 
 template<ValidIntegerType T>
-std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
+map_t_int<T, int> Divisors<T>::factorint(T n, int call_depth) {
     if (Globals::verbose) std::cout << "factorint(n=" << n << ", call_depth=" << call_depth << ")" << std::endl;
 
     bool use_trial = true;
@@ -1016,7 +1122,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
     bool use_ecm = false;
 
     if (n < 0) {
-        std::map<T, int> factors = factorint(abs(n), call_depth + 1);
+        map_t_int<T, int> factors = factorint(abs(n), call_depth + 1);
         factors[-1] = 1;
         return factors;
     }
@@ -1025,15 +1131,16 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
         return small_factor_cache[n];
     }
 
-    std::map<T, int> factors;
+    map_t_int<T, int> factors;
     if (call_depth >= MAX_RECURSION) {
         return factors;
     }
 
-    T small = 2 << 14; // 2**15 equivalent.
+    T limit = 2 << 14; // 2**15 equivalent.
     int fail_max = 600;
 
-    auto [remaining_n, next_p] = _factorint_small(factors, n, small, fail_max, 2);
+	// _factorint_small(map_t_int<T, int>& factors, T n, T limit, int fail_max, T next_p) 
+    auto [remaining_n, next_p] = _factorint_small(factors, n, limit, fail_max, 2);
     n = remaining_n;
 
     if (next_p == 0) {
@@ -1068,7 +1175,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
         auto [b, fermat] = sqrtrem(b2);
         if (!fermat) {
             for (T r : {a - b, a + b}) {
-                std::map<T, int> facs = factorint(r, call_depth + 1);
+                map_t_int<T, int> facs = factorint(r, call_depth + 1);
                 for (const auto& pair : facs) {
                     factors[pair.first] += pair.second;
                 }
@@ -1088,12 +1195,12 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
     while (true) {
         T high_ = std::min(high, _limit);
         if (use_trial) {
-            std::vector<long long> ps;
+			vec_ps ps;
             size_t idx_low = find(low);
             size_t idx_high = find(high_);
             if (idx_low > -1 && idx_high > -1) {
                 //auto end_it = (idx_high > 0 && idx_high <= aryprimes.size()) ? aryprimes.begin() + idx_high : aryprimes.end();
-                ps = std::vector<long long>(aryprimes.begin() + idx_low, (idx_high > 0) ? aryprimes.begin() + idx_high : aryprimes.end());
+                ps = vec_ps(aryprimes.begin() + idx_low, (idx_high > 0) ? aryprimes.begin() + idx_high : aryprimes.end());
             } else {
                 for (int p = low; p < high_; p += 2) {
                     if (is_prime(p)) {
@@ -1101,6 +1208,7 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                     }
                 }
             }
+			if (Globals::verbose) std::cout << "ps.size() = " << ps.size() << ", ps.capacity() = " << ps.capacity() << std::endl;
             T new_n = 0;
             std::tie(new_n, found_trial) = _trial(factors, n, ps);
             if (Globals::verbose) std::cout << "_trial(n=" << n << ", ps=primerange(" << low << ", " << high_ << ")) returned " << new_n << ", " << found_trial << std::endl;
@@ -1127,11 +1235,11 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                 long long c = pollard_pm1(n, low, high_);
                 if (Globals::verbose) std::cout << "pollard_pm1(n=" << n << ", B=" << low << ", seed=" << high_ << ") returned c=" << c << std::endl;
                 if (c) {
-                    std::vector<long long> ps;
+                    vec_ps ps;
                     if (c < next_p * next_p || is_prime(c)) {
                         ps.push_back(c);
                     } else {
-                        std::map<long long, int> factors_map = factorint(c, call_depth + 1);
+                        map_longlong_int factors_map = factorint(c, call_depth + 1);
                         for (const auto& pair : factors_map) {
                             ps.push_back(pair.first);
                         }
@@ -1150,11 +1258,11 @@ std::map<T, int> Divisors<T>::factorint(T n, int call_depth) {
                 long long c = pollard_rho(n, 1, low, high_);
                 if (Globals::verbose) std::cout << "pollard_rho(n=" << n << ", retries=1, max_steps=" << low << ", seed=" << high_ << ") returned c = " << c << std::endl;
                 if (c) {
-                    std::vector<long long> ps;
+                    vec_ps ps;
                     if (c < next_p * next_p || is_prime(c)) {
                         ps.push_back(c);
                     } else {
-                        std::map<long long, int> factors_map = factorint(c, call_depth + 1);
+                        map_longlong_int factors_map = factorint(c, call_depth + 1);
                         for (const auto& pair : factors_map) {
                             ps.push_back(pair.first);
                         }
@@ -1304,19 +1412,46 @@ T Divisors<T>::pollard_rho(T n1, T s, T a1, int retries, unsigned int seed, int6
 
 
 
-std::vector<int64_t> divisors(int64_t n) {
+ std::vector<int64_t> divisors(int64_t n) {
+	/*
+	try {
+		Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+		return div.divisors(n);
+	} catch (const std::bad_alloc& e) {
+		std::cout << "Caught std::bad_alloc: " << e.what() << std::endl;
+		vec_divisors<int64_t> vec;
+		vec.push_back(0);
+		return vec;
+	} catch (const std::exception& e) {
+		std::cout << "Caught std::exception: " << e.what() << std::endl;
+		vec_divisors<int64_t> vec;
+		vec.push_back(0);
+		return vec;
+	} catch (...) {
+		std::cout << "Caught unknown exception" << std::endl;
+		vec_divisors<int64_t> vec;
+		vec.push_back(0);
+		return vec;
+	}
+	*/
     Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
-    return div.divisors(n);
+	//return div.divisors(n);
+    vec_divisors<int64_t> vec = div.divisors(n);
+	return std::vector<int64_t>(vec.begin(), vec.end());
 }
 
-std::map<int64_t, int> factorint(int64_t n) {
+std::pair<size_t, size_t> divisors_cache_size() {
+	return { divisors_cache.keys_size(), divisors_cache.values_size() };
+}
+
+map_int64t_int factorint(int64_t n) {
     Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div.factorint(n, 0);    
 }    
 
 std::pair<int64_t, int> _factorint_small(int64_t n, int p) {
     Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
-    std::map<int64_t, int> factors;
+    map_int64t_int factors;
     auto [remaining_n, next_p] = div._factorint_small(factors, n, 2 << 14, 600, p);
     return { remaining_n, next_p };
 }
@@ -1326,14 +1461,14 @@ std::pair<int64_t, int> _perfect_power(int64_t n, int p) {
     return div._perfect_power(n, p, 0);
 }
 
-//std::pair<T, bool> _trial(std::map<T, int>& factors, T n, const std::vector<T>& candidates) {
-std::pair<int64_t, bool> _trial(std::map<int64_t, int>& factors, int64_t n, const std::vector<int64_t>& candidates) {
+//std::pair<T, bool> _trial(map_t_int<T, int>& factors, T n, const std::vector<T>& candidates) {
+std::pair<int64_t, bool> _trial(map_int64t_int& factors, int64_t n, const vec_ps& candidates) {
     Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div._trial(factors, n, candidates);
 }
 
-//_check_termination(std::map<T, int>& factors, T n, T next_p, int call_depth) {
-bool _check_termination(std::map<int64_t, int>& factors, int64_t n, int64_t next_p) {
+//_check_termination(map_t_int<T, int>& factors, T n, T next_p, int call_depth) {
+bool _check_termination(map_t_int<int64_t, int>& factors, int64_t n, int64_t next_p) {
     Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
     return div._check_termination(factors, n, next_p, 1);
 }
@@ -1390,6 +1525,7 @@ void set_verbose(bool v) {
 Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
 Scripts\pip.exe install D:\C++\AlexWeslowski\Divisors
 Scripts\pip.exe install E:\C++\AlexWeslowski\Divisors
+Scripts\pip.exe install H:\C++\AlexWeslowski\Divisors
 
 import sympy
 import sympy.external.gmpy
@@ -1602,11 +1738,106 @@ for i in range(0, 2**18):
 
 /*
 
-import sympy
 import divisors
+import math
+import sympy
 import time
 import random
 import sys
+
+t1 = time.time()
+for i in range(2, 2**23+1):
+	d = divisors.divisors(i)
+
+dt = time.time() - t1
+print(f"{i} {round(dt, 2)} {divisors.divisors_cache_size()}")
+  8388608  152.44 (40134, 201902)
+  8388608    8.45 (40134, 201902) # small_vector, laptop
+  8388608    9.96 (40134, 201902) # small_vector, laptop
+  8388608   20.62 (40134, 201902) # small_vector, workpc (7.39x)
+  8388608   37.08 (40134, 201902) # small_vector, workpc
+134217728 2298.13 (40134, 201902)
+134217728  513.70 (40134, 201902) # small_vector (4.47x)
+# 513.70 sec = 8.56 min
+
+t1 = time.time()
+ary_divisors = []
+for i in range(2, 2**27+1):
+	d = divisors.divisors(i)
+	if len(d) > 2:
+		ary_divisors.append(len(d))
+
+dt = time.time() - t1
+ary_divisors.sort()
+ary_divisors[95*len(ary_divisors)//100] #  64
+ary_divisors[98*len(ary_divisors)//100] #  96
+ary_divisors[99*len(ary_divisors)//100] # 128
+ary_divisors[-1]                        # 864
+
+import divisors
+divisors.setverbose(True)
+divisors.divisors(2 * 3 * 5 * 7)
+
+import divisors
+divisors.setverbose(True)
+divisors.divisors(2**8 * 3**3 * 5 * 7 * 11 * 23)
+
+i = 2**23 - 5
+combinations = divisors.Combinations(i)
+combinations.backtrack(i)
+list(combinations)
+
+# 6499.76 sec = 108.33 min
+# 2802.26 sec =  46.70 min
+ary_combo_outer = []
+ary_combo_inner = []
+ary_keys = []
+ary_values = []
+t1 = time.time()
+for i in range(2, 2**27+1):
+	combinations = divisors.Combinations(i)
+	combinations.backtrack(i)
+	if len(combinations) > 2:
+		ary_combo_outer.append(len(combinations))
+		ary_combo_inner.append(max([len(c) for c in combinations]))		
+		tpl = combinations.aryary_size()
+		if tpl[0] > 6:
+			ary_keys.append(tpl[0])
+		if tpl[1] > 6:
+			ary_values.append(tpl[1])
+
+#combinations.get_arrayarray().keys_capacity()   #  724
+#combinations.get_arrayarray().values_capacity() # 1948
+dt = time.time() - t1
+ary_combo_outer.sort()
+ary_combo_inner.sort()
+ary_keys.sort()
+ary_values.sort()
+print(f"{i} {round(dt, 2)} {ary_combo_outer[98*len(ary_combo_outer)//100]} {ary_combo_inner[98*len(ary_combo_inner)//100]} {ary_keys[98*len(ary_keys)//100]} {ary_values[98*len(ary_values)//100]} (98 percentile)")
+print(f"{i} {round(dt, 2)} {ary_combo_outer[99*len(ary_combo_outer)//100]} {ary_combo_inner[98*len(ary_combo_inner)//100]} {ary_keys[99*len(ary_keys)//100]} {ary_values[99*len(ary_values)//100]} (99 percentile)")
+ 8388608   698.17      243  688  791 (98 percentile)
+ 8388608   698.17      362  694 1218 (99 percentile)
+33554432 11953.17      354  708 1177 (98 percentile)
+33554432 11953.17      594 1188 2028 (99 percentile)
+67108864               362  724 1218 (98 percentile)
+67108864               681 1362 2329 (99 percentile)
+67108864  2386.27  51    5  102  150 (98 percentile)
+67108864  2386.27  51    5  102  150 (99 percentile)
+134217728 2802.26  51    5  102  150 (98 percentile)
+134217728 2802.26  51    5  102  150 (99 percentile)
+134217728 6499.76  51    5  102  150 (98 percentile)
+134217728 6499.76  51    5  102  150 (99 percentile)
+
+ary_combo_outer.count(3) .. 41226
+ary_combo_inner.count(3) .. 
+ary_keys.count(6) ......... 41226
+ary_values.count(6) ....... 41226
+ary_keys.count(8) ....... 1761852
+ary_values.count(8) ....... 10953
+	
+
+dt = time.time() - t1
+
 
 divisors.set_verbose(True)
 factors = []
@@ -1631,6 +1862,7 @@ PYBIND11_MODULE(divisors, m) {
     m.doc() = "divisors made with pybind11";
 
     m.def("divisors", &divisors);
+	m.def("divisors_cache_size", &divisors_cache_size);
     m.def("factorint", &factorint);
     m.def("is_prime", &is_prime);
     m.def("isprime", &is_prime);
