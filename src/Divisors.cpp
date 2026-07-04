@@ -27,11 +27,96 @@ void signal_handler(int signum) {
 }
 */
 
+std::string format_with_commas(uint64_t value) {
+    std::string num_str = std::to_string(value);
+    size_t insert_position = num_str.length() - 3;
+    while (insert_position > 0) {
+        num_str.insert(insert_position, ",");
+        insert_position -= 3;
+    }
+    return num_str;
+}
+
+unsigned long long to_long_long(const std::string& str) {
+    if (str.empty()) {
+		return 0;
+	}
+	auto hash = [&str]() -> unsigned long long {
+        std::hash<std::string> hasher;
+        return hasher(str);
+    };
+    std::string s = str;    
+    bool is_hex = false;
+    size_t start_idx = 0;
+    if (s[0] == '-' || s[0] == '+') {
+        start_idx = 1;
+    }
+    if (s.size() > start_idx + 2 && s[start_idx] == '0' && (s[start_idx + 1] == 'x' || s[start_idx + 1] == 'X')) {
+        is_hex = true;
+        start_idx += 2;
+    }
+    if (start_idx == s.size()) {
+		return hash();
+	}
+    for (size_t i = start_idx; i < s.size(); ++i) {
+        if (is_hex) {
+            if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return 0;
+        } else {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return 0;
+        }
+    }
+    try {
+        int base = is_hex ? 16 : 10;
+        return std::stoull(s, nullptr, base);
+    } catch (const std::exception&) {
+        return hash();
+    }
+}
+
+uint64_t get_id(bool bln_thread_local) {
+	Divisors<int64_t>& div = Divisors<int64_t>::get_instance(LEN_SET_PRIMES, bln_thread_local);
+	return div.get_id();
+}
+
+std::pair<unsigned long, unsigned long long> thread_id() {
+	std::string id = std::format("{}", std::this_thread::get_id());
+	return std::make_pair(PyThread_get_thread_ident(), to_long_long(id));
+}
+
+template<ValidIntegerType T>
+unsigned short Divisors<T>::new_id() {
+	std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<unsigned short> distrib(1000, 9999);
+	unsigned short id = distrib(gen);
+	
+	std::lock_guard<std::mutex> lock(ids_mtx);
+	while (std::ranges::contains(ids, id)) {
+		id = distrib(gen);
+	}
+	ids.push_back(id);
+	return id;
+}
+
+template<ValidIntegerType T>
+uint64_t Divisors<T>::get_id() {
+	return id;
+}
+
+template<ValidIntegerType T>
+boost::container::small_vector<unsigned short, 32> Divisors<T>::get_ids() {
+	return ids;
+}
+
 template<ValidIntegerType T>
 Divisors<T>::Divisors() {
+	/*
     if (bln_init) {
         return;
     }
+	*/
+	id = new_id();
+	
 	if (Globals::verbose) {
 		std::cout << "Divisors() bln_init = " << bln_init << std::endl;
 		std::cout << "Divisors() setprimes.size() = " << setprimes.size() << std::endl;
@@ -288,7 +373,7 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 		setprimes[3/2] = true;
 		setprimes[4/2] = false;
 	}
-
+	
     primesieve::iterator it;
     uint64_t p = it.next_prime();
 	int64_t imaxp = 1;
@@ -308,9 +393,37 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 		std::cout << "init_primes() b - 2*setprimes.size() = " << (b - 2*setprimes.size()) << std::endl;
 		std::cout << "init_primes() b - imaxp = " << (b - imaxp) << std::endl;
 	}
+	
+    std::vector<std::string> spinner = {"|", "/", "-", "\\"};    
+    uint64_t i = 1;
+    uint64_t j = 0;
+    size_t ilen = spinner.size();
+    double prevpct = -0.1;
+    double thispct = 0.0;
+	
+	auto spin = [&](uint64_t inum, uint64_t iden) {
+        if (b <= 16777216) {
+            return;
+        }
+        i++;
+        if (i % 1000 == 0) {
+            thispct = std::round(1000.0 * inum / iden) / 10.0;
+            if (thispct >= 99.9) {
+                thispct = 100.0;
+            }
+            if (thispct > prevpct) {
+                j++;
+                std::cout << "\r" << spinner[j % ilen] << " divisors init_primes(" << format_with_commas(b) << ") at " << std::fixed << std::setprecision(1) << thispct << "%";
+                std::cout.flush();
+                prevpct = thispct;
+            }
+        }
+    };
+	
 	T sqrt_b = isqrt3a(b);
 	//aryprimes.resize(sqrt_b);
     for (; p < b; p = it.next_prime()) {
+		if (Globals::verbose) spin(p - imaxp, b - imaxp);
 		if (p <= sqrt_b && p > imaxp) {
 			aryprimes.push_back(p);
 		}
@@ -320,6 +433,7 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 			dynprimes[p/2 - setprimes.size()] = true;
 		}
     }
+	if (Globals::verbose) std::cout << std::endl;
 
 	//sqrt_b = 8192 + 212;
 	try {
@@ -339,10 +453,13 @@ void Divisors<T>::init_primes(uint64_t a, uint64_t b) {
 		std::cout << "Caught an unknown exception.\n";
 	}
 	for (int i = 2; i <= sqrt_b; i++) {
+		if (Globals::verbose) spin(i, sqrt_b);
 		//divisors_cache.push_back<DIVISORS_VEC_LEN>(divisors(i));
 		//divisors_cache.push_back_small_vector<DIVISORS_VEC_LEN>(divisors(i));
 		divisors_cache.push_back(divisors(i));
 	}
+	if (Globals::verbose) std::cout << std::endl;
+	
 	if (Globals::verbose) {
 		std::cout << "init_primes() setprimes.size() = " << setprimes.size() << std::endl;
 		std::cout << "init_primes() aryprimes.size() = " << aryprimes.size() << std::endl;
@@ -439,16 +556,39 @@ bool Divisors<T>::resize(int64_t n) {
 }
 
 template<ValidIntegerType T>
-Divisors<T>& Divisors<T>::get_instance(int64_t n) {
+Divisors<T>& Divisors<T>::get_instance(int64_t n, bool bln_thread_local) {
+	PyGILState_STATE gilstate;
+	gilstate = PyGILState_Ensure();
 	if (Globals::verbose) {
-		std::cout << "get_instance(), n = " << n << ", bln_init = " << bln_init << std::endl;
-		std::cout << "get_instance(), DIVISORS_CACHE_KEYS_LEN = " << DIVISORS_CACHE_KEYS_LEN << std::endl;
-		std::cout << "get_instance(), DIVISORS_CACHE_VALUES_LEN = " << DIVISORS_CACHE_VALUES_LEN << std::endl;
+		std::cout << "Divisors<T>::get_instance(), n = " << n << ", bln_init = " << bln_init << std::endl;
+		std::cout << "Divisors<T>::get_instance(), DIVISORS_CACHE_KEYS_LEN = " << DIVISORS_CACHE_KEYS_LEN << std::endl;
+		std::cout << "Divisors<T>::get_instance(), DIVISORS_CACHE_VALUES_LEN = " << DIVISORS_CACHE_VALUES_LEN << std::endl;
 	}
 	bool bln = bln_init;
-    static Divisors<T> instance;
-	instance.resize(n);
-    return instance;
+	static Divisors<T>* global_instance = nullptr;
+    static thread_local Divisors<T>* local_instance = nullptr;
+    Divisors<T>*& instance = bln_thread_local ? local_instance : global_instance;
+    if (instance == nullptr) {
+        if (!bln_thread_local) {
+            static std::mutex get_instance_mtx;
+            std::lock_guard<std::mutex> lock(get_instance_mtx);
+            if (instance == nullptr) {
+                instance = new Divisors<T>();
+            }
+        } else {
+            instance = new Divisors<T>();
+        }
+    }
+	if (Globals::verbose) {
+		auto [i, j] = instance->thread_id();
+		if (i == 0) {
+			i = j;
+		}
+		std::cout << "Divisors<T>::get_instance(), thread_id = " << i << std::endl;
+	}
+	instance->resize(n);
+	PyGILState_Release(gilstate);
+    return *instance;
 }
 
 template<ValidIntegerType T>
@@ -648,6 +788,24 @@ int Divisors<T>::num_digits(T n) {
     return static_cast<int>(std::floor(std::log10(static_cast<long double>(std::abs(n))))) + 1;
 }
 
+template<ValidIntegerType T>
+uint64_t Divisors<T>::size() {
+	return 2 * setprimes.size() - 1 + 2 * dynprimes.size() - 1;
+}
+
+template<ValidIntegerType T>
+std::pair<unsigned long, unsigned long long> Divisors<T>::thread_id() {
+	std::string id = std::format("{}", std::this_thread::get_id());
+	return std::make_pair(PyThread_get_thread_ident(), to_long_long(id));
+}
+
+/*
+template<ValidIntegerType T>
+std::pair<unsigned long, unsigned long long> Divisors<T>::thread_id() {
+	return thread_id();
+}
+*/
+
 /*
 import divisors as div
 assert(not div.is_prime(0))
@@ -677,7 +835,195 @@ std::pair<T, int> Divisors<T>::remove(T n, T p) {
     }
     return { n, m };
 }
-    
+
+template<ValidIntegerType T>
+template<size_t N>
+T Divisors<T>::mult(const std::array<T, N>& ary) {
+    if (ary.size() <= 2) {
+        return (is_prime(ary[0]) || is_prime(ary[1])) ? ary[0] * ary[1] : lcm(ary[0], ary[1]);
+    } else {
+		T i = (is_prime(ary[0]) || is_prime(ary[1])) ? ary[0] * ary[1] : lcm(ary[0], ary[1]);
+		for (int a = 2; a < ary.size(); a++) {
+			i = (is_prime(ary[a])) ? i * ary[a] : lcm(i, ary[a]);
+		}
+		return i;
+	}
+	/*
+    if (ary.size() <= 2) {
+        return lcm(ary[0], ary[1]);
+    } else {
+		T i = lcm(ary[0], ary[1]);
+		for (int a = 2; a < ary.size(); a++) {
+			i = lcm(i, ary[a]);
+		}
+		return i;
+	}
+	*/
+}
+
+template<ValidIntegerType T>
+BoostRational<T> Divisors<T>::calc_density_bitmask(T i, const vector<T>& a, const BoostRational<T>& max_sum) {
+	bool bcheckmax = false;
+    if (a.size() == 0) {
+        return BoostRational<T>(0, 1);
+	}
+    BoostRational<T> frac(1, a[0]);
+    if (frac > max_sum) {
+        return BoostRational<T>(1, 1);
+	}
+    for (uint64_t mask = 1; mask < (1ULL << a.size()); ++mask) {
+        if (mask == 1) {
+            continue;
+		}
+        T denom = 1;
+        for (int i = 0; i < a.size(); ++i) {
+            if (mask & (1ULL << i)) {
+				if (denom == 1) {
+					denom = a[i];
+				} else {
+					denom = (is_prime(a[i])) ? denom * a[i] : lcm(denom, a[i]);
+				}
+            }
+        }
+        BoostRational<T> term(1, denom);
+        if (std::popcount(mask) & 1) {
+            frac += term;
+        } else {
+            frac -= term;
+		}
+    }
+    if (bcheckmax && frac > max_sum) {
+        return BoostRational<T>(1, 1);
+	}
+    return frac;
+}
+
+/*
+
+bspan = False
+for i in range(2, 9):
+	terms = []
+	terms.append(f"BoostRational<T>(1, a[{i}])")
+	for j in range(1, i + 1):
+		for c in itertools.combinations(range(i), j):
+			args = ", ".join(f"a[{k}]" for k in c + (i,))
+			if bspan:
+				terms.append(f" {'-' if j % 2 == 1 else '+'} BoostRational<T>(1, mult({{{args}}}))")
+			else:
+				terms.append(f" {'-' if j % 2 == 1 else '+'} BoostRational<T>(1, mult(std::array<T, {j+1}>{{{args}}}))")
+			line = "\tfrac += " + "".join(terms) + ";"
+			line = line.replace("frac += + ", "frac += ")
+			line = line.replace("frac += - ", "frac += -")
+			if len(line) > 3840:
+				print(line)
+				terms = []
+	if len(terms) > 0:
+		line = "\tfrac += " + "".join(terms) + ";"
+		line = line.replace("frac += + ", "frac += ")
+		line = line.replace("frac += - ", "frac += -")
+		print()
+	print(f"if (a.size() >= {i+1}) {{")
+	print("\treturn frac;")
+	print("}")
+*/
+#undef BLN_CHECKMAX
+
+template<ValidIntegerType T>
+BoostRational<T> Divisors<T>::calc_density_unrolled(T i, const std::vector<T>& a, const BoostRational<T>& max_sum) {
+    bool bcheckmax = false;
+    if (a.size() == 0) {
+        return BoostRational<T>(0, 1);
+	}
+	if (a.size() > 9) {
+		return calc_density_bitmask(i, a, max_sum);
+	}
+    BoostRational<T> frac(1, a[0]);
+#ifdef BLN_CHECKMAX
+    if (frac > max_sum) {
+        return BoostRational<T>(1, 1);
+	}
+#endif
+    frac += BoostRational<T>(1, a[1]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[1]}));
+    if (bcheckmax and frac > max_sum) {
+        return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 3) {
+		return frac;
+	}
+	
+	//frac += BoostRational<T>(1, a[2]) - BoostRational<T>(1, mult({a[0], a[2]})) - BoostRational<T>(1, mult({a[1], a[2]})) + BoostRational<T>(1, mult({a[0], a[1], a[2]}));
+	frac += BoostRational<T>(1, a[2]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[2]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[2]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[2]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 4) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[3]) - BoostRational<T>(1, mult({a[0], a[3]})) - BoostRational<T>(1, mult({a[1], a[3]})) - BoostRational<T>(1, mult({a[2], a[3]})) + BoostRational<T>(1, mult({a[0], a[1], a[3]})) + BoostRational<T>(1, mult({a[0], a[2], a[3]})) + BoostRational<T>(1, mult({a[1], a[2], a[3]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3]}));
+	frac += BoostRational<T>(1, a[3]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[3]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[3]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[3]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[3]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[3]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[3]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[3]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 5) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[4]) - BoostRational<T>(1, mult({a[0], a[4]})) - BoostRational<T>(1, mult({a[1], a[4]})) - BoostRational<T>(1, mult({a[2], a[4]})) - BoostRational<T>(1, mult({a[3], a[4]})) + BoostRational<T>(1, mult({a[0], a[1], a[4]})) + BoostRational<T>(1, mult({a[0], a[2], a[4]})) + BoostRational<T>(1, mult({a[0], a[3], a[4]})) + BoostRational<T>(1, mult({a[1], a[2], a[4]})) + BoostRational<T>(1, mult({a[1], a[3], a[4]})) + BoostRational<T>(1, mult({a[2], a[3], a[4]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4]}));
+	frac += BoostRational<T>(1, a[4]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[4]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[4]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[4]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[3], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[3], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[3], a[4]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[3], a[4]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[4]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[3], a[4]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[3], a[4]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[3], a[4]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[3], a[4]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 6) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[5]) - BoostRational<T>(1, mult({a[0], a[5]})) - BoostRational<T>(1, mult({a[1], a[5]})) - BoostRational<T>(1, mult({a[2], a[5]})) - BoostRational<T>(1, mult({a[3], a[5]})) - BoostRational<T>(1, mult({a[4], a[5]})) + BoostRational<T>(1, mult({a[0], a[1], a[5]})) + BoostRational<T>(1, mult({a[0], a[2], a[5]})) + BoostRational<T>(1, mult({a[0], a[3], a[5]})) + BoostRational<T>(1, mult({a[0], a[4], a[5]})) + BoostRational<T>(1, mult({a[1], a[2], a[5]})) + BoostRational<T>(1, mult({a[1], a[3], a[5]})) + BoostRational<T>(1, mult({a[1], a[4], a[5]})) + BoostRational<T>(1, mult({a[2], a[3], a[5]})) + BoostRational<T>(1, mult({a[2], a[4], a[5]})) + BoostRational<T>(1, mult({a[3], a[4], a[5]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[5]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[5]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[5]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[5]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[5]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[5]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[5]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[5]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[5]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[5]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5]}));
+	frac += BoostRational<T>(1, a[5]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[5]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[5]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[5]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[3], a[5]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[3], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[3], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[3], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[3], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[3], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[3], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[3], a[5]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[4], a[5]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[4], a[5]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[4], a[5]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 7) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[6]) - BoostRational<T>(1, mult({a[0], a[6]})) - BoostRational<T>(1, mult({a[1], a[6]})) - BoostRational<T>(1, mult({a[2], a[6]})) - BoostRational<T>(1, mult({a[3], a[6]})) - BoostRational<T>(1, mult({a[4], a[6]})) - BoostRational<T>(1, mult({a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[6]})) + BoostRational<T>(1, mult({a[0], a[2], a[6]})) + BoostRational<T>(1, mult({a[0], a[3], a[6]})) + BoostRational<T>(1, mult({a[0], a[4], a[6]})) + BoostRational<T>(1, mult({a[0], a[5], a[6]})) + BoostRational<T>(1, mult({a[1], a[2], a[6]})) + BoostRational<T>(1, mult({a[1], a[3], a[6]})) + BoostRational<T>(1, mult({a[1], a[4], a[6]})) + BoostRational<T>(1, mult({a[1], a[5], a[6]})) + BoostRational<T>(1, mult({a[2], a[3], a[6]})) + BoostRational<T>(1, mult({a[2], a[4], a[6]})) + BoostRational<T>(1, mult({a[2], a[5], a[6]})) + BoostRational<T>(1, mult({a[3], a[4], a[6]})) + BoostRational<T>(1, mult({a[3], a[5], a[6]})) + BoostRational<T>(1, mult({a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[6]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[6]})) - BoostRational<T>(1, mult({a[0], a[2], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[6]})) - BoostRational<T>(1, mult({a[0], a[3], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[6]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[6]})) - BoostRational<T>(1, mult({a[1], a[2], a[5], a[6]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[6]})) - BoostRational<T>(1, mult({a[1], a[3], a[5], a[6]})) - BoostRational<T>(1, mult({a[1], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[6]})) - BoostRational<T>(1, mult({a[2], a[3], a[5], a[6]})) - BoostRational<T>(1, mult({a[2], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[6]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[6]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[6]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[6]}));
+	frac += BoostRational<T>(1, a[6]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[6]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[6]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[6]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[3], a[6]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[3], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[3], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[3], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[3], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[3], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[3], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[3], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[4], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[5], a[6]}));
+	frac += BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[4], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[5], a[6]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[5], a[6]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[5], a[6]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 8) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[7]) - BoostRational<T>(1, mult({a[0], a[7]})) - BoostRational<T>(1, mult({a[1], a[7]})) - BoostRational<T>(1, mult({a[2], a[7]})) - BoostRational<T>(1, mult({a[3], a[7]})) - BoostRational<T>(1, mult({a[4], a[7]})) - BoostRational<T>(1, mult({a[5], a[7]})) - BoostRational<T>(1, mult({a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[7]})) + BoostRational<T>(1, mult({a[0], a[3], a[7]})) + BoostRational<T>(1, mult({a[0], a[4], a[7]})) + BoostRational<T>(1, mult({a[0], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[7]})) + BoostRational<T>(1, mult({a[1], a[3], a[7]})) + BoostRational<T>(1, mult({a[1], a[4], a[7]})) + BoostRational<T>(1, mult({a[1], a[5], a[7]})) + BoostRational<T>(1, mult({a[1], a[6], a[7]})) + BoostRational<T>(1, mult({a[2], a[3], a[7]})) + BoostRational<T>(1, mult({a[2], a[4], a[7]})) + BoostRational<T>(1, mult({a[2], a[5], a[7]})) + BoostRational<T>(1, mult({a[2], a[6], a[7]})) + BoostRational<T>(1, mult({a[3], a[4], a[7]})) + BoostRational<T>(1, mult({a[3], a[5], a[7]})) + BoostRational<T>(1, mult({a[3], a[6], a[7]})) + BoostRational<T>(1, mult({a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[7]})) - BoostRational<T>(1, mult({a[0], a[3], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[3], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[5], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[7]})) - BoostRational<T>(1, mult({a[1], a[3], a[5], a[7]})) - BoostRational<T>(1, mult({a[1], a[3], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[1], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[7]})) - BoostRational<T>(1, mult({a[2], a[3], a[5], a[7]})) - BoostRational<T>(1, mult({a[2], a[3], a[6], a[7]})) - BoostRational<T>(1, mult({a[2], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[2], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[2], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[7]}));
+	//frac += BoostRational<T>(1, mult({a[0], a[1], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[2], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[2], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]}));
+	frac += BoostRational<T>(1, a[7]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[3], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[3], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[3], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[3], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[3], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[3], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[3], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[6], a[7]}));
+	frac += -BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[3], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[4], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[4], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[6], a[7]}));
+	frac += -BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[5], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[5], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[3], a[4], a[5], a[6], a[7]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[3], a[4], a[5], a[6], a[7]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	if (a.size() < 9) {
+		return frac;
+	}
+
+	//frac += BoostRational<T>(1, a[8]) - BoostRational<T>(1, mult({a[0], a[8]})) - BoostRational<T>(1, mult({a[1], a[8]})) - BoostRational<T>(1, mult({a[2], a[8]})) - BoostRational<T>(1, mult({a[3], a[8]})) - BoostRational<T>(1, mult({a[4], a[8]})) - BoostRational<T>(1, mult({a[5], a[8]})) - BoostRational<T>(1, mult({a[6], a[8]})) - BoostRational<T>(1, mult({a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[8]})) + BoostRational<T>(1, mult({a[0], a[4], a[8]})) + BoostRational<T>(1, mult({a[0], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[8]})) + BoostRational<T>(1, mult({a[1], a[4], a[8]})) + BoostRational<T>(1, mult({a[1], a[5], a[8]})) + BoostRational<T>(1, mult({a[1], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[8]})) + BoostRational<T>(1, mult({a[2], a[4], a[8]})) + BoostRational<T>(1, mult({a[2], a[5], a[8]})) + BoostRational<T>(1, mult({a[2], a[6], a[8]})) + BoostRational<T>(1, mult({a[2], a[7], a[8]})) + BoostRational<T>(1, mult({a[3], a[4], a[8]})) + BoostRational<T>(1, mult({a[3], a[5], a[8]})) + BoostRational<T>(1, mult({a[3], a[6], a[8]})) + BoostRational<T>(1, mult({a[3], a[7], a[8]})) + BoostRational<T>(1, mult({a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[5], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[5], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[1], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[5], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[6], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[2], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[2], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[2], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[2], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[6], a[8]}));
+	//frac += BoostRational<T>(-1, mult({a[0], a[1], a[2], a[3], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[2], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[2], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[2], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[1], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[2], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[1], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[0], a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult({a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult({a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]}));
+	frac += BoostRational<T>(1, a[8]) - BoostRational<T>(1, mult(std::array<T, 2>{a[0], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[1], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[2], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[3], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 2>{a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[1], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[2], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[3], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[0], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[2], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[3], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[1], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[3], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[2], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[3], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 3>{a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[2], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[3], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[1], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[3], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[2], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[3], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[0], a[6], a[7], a[8]}));
+	frac += -BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[3], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[2], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[3], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[1], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[3], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[2], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 4>{a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[3], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[2], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[3], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[1], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[5], a[8]}));
+	frac += BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[3], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[2], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[0], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[4], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[3], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[2], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[1], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[2], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[3], a[4], a[5], a[7], a[8]}));
+	frac += BoostRational<T>(1, mult(std::array<T, 5>{a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 5>{a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[4], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[3], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[2], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[1], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[2], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[0], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[5], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[4], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[3], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[4], a[5], a[7], a[8]}));
+	frac += -BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[2], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[1], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[3], a[4], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[2], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 6>{a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[5], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[4], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[3], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[2], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[1], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[2], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[0], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[3], a[4], a[5], a[6], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[3], a[4], a[5], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[3], a[4], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[3], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[2], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[1], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 7>{a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[3], a[4], a[5], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[3], a[4], a[6], a[7], a[8]}));
+	frac += -BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[3], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[2], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[1], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[0], a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) - BoostRational<T>(1, mult(std::array<T, 8>{a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]})) + BoostRational<T>(1, mult(std::array<T, 9>{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]}));
+	if (bcheckmax and frac > max_sum) {
+		return BoostRational<T>(1, 1);
+	}
+	return frac;
+}
+
+
 template<ValidIntegerType T>
 vec_divisors<T> Divisors<T>::divisors(T n) {
     T abs_n = n < 0 ? -n : n;
@@ -878,7 +1224,9 @@ bool Divisors<T>::_check_termination(map_t_int<T, int>& factors, T n, T next_p, 
     if (Globals::verbose) std::cout << "_check_termination() n < next_p * next_p (" << n << " < " << next_p << " * " << next_p << ") ? " << (n < next_p * next_p) << std::endl;
     if (Globals::verbose) std::cout << "_check_termination() n/2 < LEN_SET_PRIMES + dynprimes.size() (" << n/2 << " < " << LEN_SET_PRIMES + dynprimes.size() << ") ? " << (un/2 < LEN_SET_PRIMES + dynprimes.size()) << std::endl;
     if (n < next_p * next_p || (un/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(n))) {
+#ifdef FACTOR_CACHE
         factor_cache[n] = n;
+#endif
         factors[n] = 1;
         return true;
     }
@@ -897,7 +1245,9 @@ bool Divisors<T>::_check_termination(map_t_int<T, int>& factors, T n, T next_p, 
     if (Globals::verbose) std::cout << "_check_termination() base < next_p * next_p (" << base << " < " << next_p << " * " << next_p << ") ? " << (base < next_p * next_p) << std::endl;
     if (Globals::verbose) std::cout << "_check_termination() base < LEN_SET_PRIMES + dynprimes.size() (" << base << " < " << LEN_SET_PRIMES + dynprimes.size() << ") ? " << (ubase < LEN_SET_PRIMES + dynprimes.size()) << std::endl;
     if (base < next_p * next_p || (ubase/2 < LEN_SET_PRIMES + dynprimes.size() && is_prime(base))) {
+#ifdef FACTOR_CACHE
         factor_cache[n] = base;
+#endif
         factors[base] = exp;
     } else {
         map_t_int<T, int> facs = factorint(base, call_depth + 1);
@@ -917,10 +1267,11 @@ std::pair<T, bool> Divisors<T>::_trial(map_t_int<T, int>& factors, T n, const ve
 
     for (const T& d : candidates) {
         if (n % d == 0) {
+#ifdef FACTOR_CACHE
             if (n != d) {
                 factor_cache[n] = d;
             }
-
+#endif
             int m = 0;
             while (n % d == 0) {
                 n /= d;
@@ -1150,12 +1501,14 @@ map_t_int<T, int> Divisors<T>::factorint(T n, int call_depth) {
         return factors;
     }
 
+#ifdef FACTOR_CACHE
     while (factor_cache.count(n)) {
         T p = factor_cache[n];
         auto [new_n, e] = remove(n, p);
         n = new_n;
         factors[p] = factors.count(p) ? factors[p] + e : e;
     }
+#endif
 
     bool check_term = _check_termination(factors, n, next_p, call_depth + 1);
     if (Globals::verbose) std::cout << "_check_termination(" << to_string<T, int>(factors) << ", " << n << ", " << next_p << ") returned " << check_term << std::endl;
@@ -1411,11 +1764,17 @@ T Divisors<T>::pollard_rho(T n1, T s, T a1, int retries, unsigned int seed, int6
 }
 
 
+Divisors<int64_t>& get_instance(int64_t n, bool bln_thread_local) {
+	if (Globals::verbose) {
+		std::cout << "get_instance(), n = " << n << std::endl;
+	}
+	return Divisors<int64_t>::get_instance(n, bln_thread_local);
+}
 
- std::vector<int64_t> divisors(int64_t n) {
+std::vector<int64_t> divisors(int64_t n, bool bln_thread_local = true) {
 	/*
 	try {
-		Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+		Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
 		return div.divisors(n);
 	} catch (const std::bad_alloc& e) {
 		std::cout << "Caught std::bad_alloc: " << e.what() << std::endl;
@@ -1434,66 +1793,83 @@ T Divisors<T>::pollard_rho(T n1, T s, T a1, int retries, unsigned int seed, int6
 		return vec;
 	}
 	*/
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
 	//return div.divisors(n);
     vec_divisors<int64_t> vec = div.divisors(n);
 	return std::vector<int64_t>(vec.begin(), vec.end());
 }
 
-std::pair<size_t, size_t> divisors_cache_size() {
-	return { divisors_cache.keys_size(), divisors_cache.values_size() };
+uint64_t resize(int64_t n, bool bln_thread_local = true) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
+	return div.size();
+	//return 2 * staticsetprimes.size() - 1 + 2 * staticdynprimes.size() - 1;	
 }
 
-map_int64t_int factorint(int64_t n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+BoostRational<int64_t> calc_density_bitmask(int64_t n, const vector<int64_t>& a, const BoostRational<int64_t>& max_sum, bool bln_thread_local) {
+	Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
+	return div.calc_density_bitmask(n, a, max_sum);
+}
+
+BoostRational<int64_t> calc_density_unrolled(int64_t n, const vector<int64_t>& a, const BoostRational<int64_t>& max_sum, bool bln_thread_local) {
+	Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
+	return div.calc_density_unrolled(n, a, max_sum);
+}
+
+std::pair<size_t, size_t> divisors_cache_size(bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(LEN_SET_PRIMES, bln_thread_local);
+	return { div.divisors_cache.keys_size(), div.divisors_cache.values_size() };
+}
+
+map_int64t_int factorint(int64_t n, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.factorint(n, 0);    
 }    
 
-std::pair<int64_t, int> _factorint_small(int64_t n, int p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+std::pair<int64_t, int> _factorint_small(int64_t n, int p, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     map_int64t_int factors;
     auto [remaining_n, next_p] = div._factorint_small(factors, n, 2 << 14, 600, p);
     return { remaining_n, next_p };
 }
 
-std::pair<int64_t, int> _perfect_power(int64_t n, int p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+std::pair<int64_t, int> _perfect_power(int64_t n, int p, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div._perfect_power(n, p, 0);
 }
 
 //std::pair<T, bool> _trial(map_t_int<T, int>& factors, T n, const std::vector<T>& candidates) {
-std::pair<int64_t, bool> _trial(map_int64t_int& factors, int64_t n, const vec_ps& candidates) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+std::pair<int64_t, bool> _trial(map_int64t_int& factors, int64_t n, const vec_ps& candidates, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div._trial(factors, n, candidates);
 }
 
 //_check_termination(map_t_int<T, int>& factors, T n, T next_p, int call_depth) {
-bool _check_termination(map_t_int<int64_t, int>& factors, int64_t n, int64_t next_p) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+bool _check_termination(map_t_int<int64_t, int>& factors, int64_t n, int64_t next_p, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div._check_termination(factors, n, next_p, 1);
 }
 
 //pollard_pm1(n, B=low, seed=high_)
 //pollard_pm1(T n, int B = 10, T a = 2, int retries = 0, unsigned int seed = 1234) 
-int64_t pollard_pm1(int64_t n, int B, unsigned int seed) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+int64_t pollard_pm1(int64_t n, int B, unsigned int seed, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.pollard_pm1(n, B, 2, 0, seed);
 }
 
 //pollard_rho(n, retries=1, max_steps=low, seed=high_)
 //pollard_rho(T n1, T s = 2, T a1 = 1, int retries = 5, unsigned int seed = 1234, uint64_t max_steps = 0)
-int64_t pollard_rho(int64_t n, uint64_t max_steps, unsigned int seed) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+int64_t pollard_rho(int64_t n, uint64_t max_steps, unsigned int seed, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.pollard_rho(n, 2, 1, 1, seed, max_steps);
 }
 
-int64_t isqrt(int64_t n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+int64_t isqrt(int64_t n, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.isqrt3a(n);
 }
 
-std::pair<int64_t, int64_t> sqrtrem(int64_t n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+std::pair<int64_t, int64_t> sqrtrem(int64_t n, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.sqrtrem(n);
 }
 
@@ -1505,13 +1881,49 @@ import sympy
 [n for n in range(134217728 + 1, 134217728 + 65, 2) if sympy.isprime(n)]
 [n for n in range(268435456 + 1, 268435456 + 65, 2) if sympy.isprime(n)]
 */
-bool is_prime(int64_t n) {
-    Divisors<int64_t> div = Divisors<int64_t>::get_instance(n);
+bool is_prime(int64_t n, bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(n, bln_thread_local);
     return div.is_prime(n);
 }
 
-uint64_t len() {
-	return setprimes.size() - 1 + dynprimes.size() - 1;
+std::vector<uint64_t> c_primes(uint64_t from_limit, uint64_t to_limit = 0) {
+    from_limit = std::max(from_limit, uint64_t(0));
+    to_limit   = std::max(to_limit,   uint64_t(0));
+    if (to_limit == 0) {
+        to_limit   = from_limit;
+        from_limit = 0;
+    }
+    errno = 0;
+    size_t size = 0;
+    void* c_primes = primesieve_generate_primes(from_limit, to_limit, &size, UINT64_PRIMES);
+    if (errno != 0) {
+        primesieve_free(c_primes);
+        throw std::runtime_error("Failed to generate primes, most likely due to insufficient memory.");
+    }
+    uint64_t* ptr = static_cast<uint64_t*>(c_primes);
+    std::vector<uint64_t> vec(ptr, ptr + size);
+    primesieve_free(c_primes);
+    return vec;
+}
+
+std::vector<uint64_t> cpp_primes(uint64_t from_limit, uint64_t to_limit = 0) {
+    if (to_limit == 0) {
+        to_limit   = from_limit;
+        from_limit = 0;
+    }
+    std::vector<uint64_t> vec;
+    try {
+        primesieve::generate_primes(from_limit, to_limit, &vec);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to generate primes, most likely due to insufficient memory.");
+    }
+    return vec;
+}
+
+uint64_t len(bool bln_thread_local) {
+    Divisors<int64_t>& div = Divisors<int64_t>::get_instance(LEN_SET_PRIMES, bln_thread_local);
+	return div.size();
+	//return 2 * staticsetprimes.size() - 1 + 2 * staticdynprimes.size() - 1;	
 }
 
 void set_verbose(bool v) {
@@ -1525,7 +1937,7 @@ void set_verbose(bool v) {
 Scripts\pip.exe install C:\Users\alex.weslowski\Documents\C++\AlexWeslowski\Divisors
 Scripts\pip.exe install D:\C++\AlexWeslowski\Divisors
 Scripts\pip.exe install E:\C++\AlexWeslowski\Divisors
-Scripts\pip.exe install H:\C++\AlexWeslowski\Divisors
+python3.14t.exe -m pip install H:\C++\AlexWeslowski\Divisors
 
 import sympy
 import sympy.external.gmpy
@@ -1537,10 +1949,36 @@ import time
 import random
 import sys
 import os
+import threading
 import importlib
 sys.path.append('C:\\Users\\alex.weslowski\\Documents\\Python\\Sequence')
 import sequence
 import sympy_ntheory_factor
+
+def threads(id, create_objs):
+	print(f"thread_id is {divisors.thread_id()}")
+	if create_objs:
+		div = divisors.get_instance(1048576)
+		comb = divisors.Combinations(1048576)
+		print(f"divisors.thread_id is {div.thread_id()}")
+		print(f"divisors.size is {div.size()}")
+		print(f"combinations.thread_id is {comb.thread_id()}")
+	
+import divisors
+import threading
+_ = threading.stack_size(33554432)
+divisors.thread_id()
+# divisors.set_verbose(True)
+div = divisors.get_instance(1048576)
+div.thread_id()
+bdaemon = False
+inumthreads = 4
+th = [None] * inumthreads
+for t in range(0, inumthreads):
+	th[t] = threading.Thread(target=threads, args=(t, True), daemon=bdaemon)
+	th[t].start()
+for t in range(0, inumthreads):
+	th[t].join()
 
 importlib.reload(sequence)
 importlib.reload(sympy_ntheory_factor)
@@ -1738,6 +2176,37 @@ for i in range(0, 2**18):
 
 /*
 
+python3.14t.exe -m pip install D:\C++\AlexWeslowski\Divisors
+
+import subprocess
+import sys
+import os
+import shutil
+
+boost_dir = r"D:\Downloads\boost_1_82_0\boost"
+pkg_dir = r"D:\C++\AlexWeslowski\Divisors"
+dst_dir = r"D:\C++\AlexWeslowski\Divisors\include\boost"
+result = subprocess.run([r"C:\Python\Python314\Scripts\pip3.14.exe", "install", pkg_dir], capture_output=True, text=True)
+
+if result.returncode == 1:
+	files = []
+	for line in result.stderr.split("\n"):
+		print(line)
+		if line.find("Cannot open include file") > -1:
+			files.append(line)
+
+	for file in files:
+		file_path = re.search(r"'boost/.+\.hpp'", file).group().strip("'")
+		src_path = os.path.join(boost_dir, file_path).replace("/", "\\").replace("boost\\boost", "boost")
+		dst_path = os.path.join(dst_dir, file_path).replace("/", "\\").replace("boost\\boost", "boost")
+		match = re.search(r"boost\\.+\\", src_path)
+		if match:
+			src_path = src_path[:src_path.rfind("\\")+1]
+			dst_path = dst_path[:dst_path.rfind("\\")+1]
+			_ = shutil.copytree(src_path, dst_path)
+		else:
+			shutil.copy(path, "backup_folder/")
+	
 import divisors
 import math
 import sympy
@@ -1858,23 +2327,122 @@ sd == dd
 */
 
 
-PYBIND11_MODULE(divisors, m) {
+PYBIND11_MODULE(divisors, m, py::mod_gil_not_used()) {
     m.doc() = "divisors made with pybind11";
-
-    m.def("divisors", &divisors);
+	
+	/*
+	import divisors as div
+	import time
+	import random
+	import statistics
+	
+	def test(aryary, bitmask=False, unrolled=False):
+		one = div.BoostRational(1, 1)
+		t0 = time.time()
+		if bitmask:
+			for ary in aryary:
+				frac = div.calc_density_bitmask(1, ary, one)
+		elif unrolled:
+			for ary in aryary:
+				frac = div.calc_density_unrolled(1, ary, one)
+		return time.time() - t0
+	
+	bm = [test(aryary, True, False) for _ in range(10)]
+	ur = [test(aryary, False, True) for _ in range(10)]
+	print(f"{round(statistics.mean(bm), 2):.2f} +/- {round(statistics.stdev(bm), 2):.2f}")
+	print(f"{round(statistics.mean(ur), 2):.2f} +/- {round(statistics.stdev(ur), 2):.2f}")
+	
+	calc_density_bitmask .... 4.63 +/- 0.35
+	calc_density_unrolled ... 4.31 +/- 0.08	
+	
+	aryary = []
+	aryprimes = div.primes(2, 256)
+	while len(aryary) < 2**20:
+		n = random.randint(2**14, 2**30)
+		while n < 2**28 and len(div.divisors(n)) < 24:
+			n *= aryprimes[random.randint(0, len(aryprimes)-1)]
+		if n < 2**30 and len(div.divisors(n)) >= 24:
+			c = div.Combinations(n)
+			c.backtrack(n)
+			aryary.extend([ary for ary in c if len(ary) >= 4])
+	
+	*/
+	
+	m.def("divisors", &divisors);
+    m.def("resize", &resize);
+	//m.def("get_instance", &get_instance, py::arg("n"), py::arg("bln_thread_local") = true, py::return_value_policy::reference);
+	m.def("get_instance", &get_instance, py::return_value_policy::reference);
+	m.def("calc_density_bitmask", &calc_density_bitmask);
+	m.def("calc_density_unrolled", &calc_density_unrolled);
 	m.def("divisors_cache_size", &divisors_cache_size);
     m.def("factorint", &factorint);
     m.def("is_prime", &is_prime);
     m.def("isprime", &is_prime);
+    m.def("c_primes", &c_primes);
+    m.def("cpp_primes", &cpp_primes);
+    m.def("primes", &cpp_primes);
+    m.def("primerange", &cpp_primes);
+    m.def("prime_range", &cpp_primes);
     m.def("set_verbose", &set_verbose);
     m.def("setverbose", &set_verbose);
     m.def("len", &len);
+    m.def("__len__", &len);
     m.def("size", &len);
-
+	m.def("id", &get_id);
+	m.def("thread_id", &thread_id);
+	
+	py::class_<Commons::Math::Rational<int64_t>>(m, "Rational")
+		.def(py::init<int64_t, int64_t>(), py::arg("numerator"), py::arg("denominator"))
+        .def(py::init<int64_t>())
+		.def_property_readonly("numerator", &Commons::Math::Rational<int64_t>::numerator)
+		.def_property_readonly("denominator", &Commons::Math::Rational<int64_t>::denominator)
+		.def("__repr__", [](const Commons::Math::Rational<int64_t>& r) { return std::to_string(r.numerator()) + "/" + std::to_string(r.denominator()); });
+	
+	/*
+	py::class_<Fraction<int64_t>>(m, "Fraction")
+		.def(py::init<int64_t, int64_t>(), py::arg("numerator"), py::arg("denominator"))
+        .def(py::init<int64_t>())
+		.def_property_readonly("numerator", &Fraction<int64_t>::numerator)
+		.def_property_readonly("denominator", &Fraction<int64_t>::denominator)
+		.def("__repr__", [](const Fraction<int64_t>& r) { return std::to_string(r.numerator()) + "/" + std::to_string(r.denominator()); });
+	*/
+	
+	py::class_<boost::rational<int64_t>>(m, "BoostRational")
+		.def(py::init<int64_t, int64_t>(), py::arg("numerator"), py::arg("denominator"))
+        .def(py::init<int64_t>())
+		.def_property_readonly("numer", &boost::rational<int64_t>::numer)
+		.def_property_readonly("denom", &boost::rational<int64_t>::denom)
+		//.def("numerator", &boost::rational<int64_t>::numerator)
+		//.def("denominator", &boost::rational<int64_t>::denominator)
+		//.def_property("numerator", &boost::rational<int64_t>::numerator)
+		//.def_property("denominator", &boost::rational<int64_t>::denominator)
+		.def_property("numerator", [](const boost::rational<int64_t>& r) { return r.numerator(); }, [](boost::rational<int64_t>& r, int64_t new_num) { r = boost::rational<int64_t>(new_num, r.denominator()); })
+		.def_property("denominator", [](const boost::rational<int64_t>& r) { return r.denominator(); }, [](boost::rational<int64_t>& r, int64_t new_den) { r = boost::rational<int64_t>(r.numerator(), new_den); })
+		//.def_property_readonly("numerator", &boost::rational<int64_t>::numerator)
+		//.def_property_readonly("denominator", &boost::rational<int64_t>::denominator)
+		.def(py::self == py::self)
+        .def(py::self != py::self)
+        .def(py::self <  py::self)
+        .def(py::self <= py::self)
+        .def(py::self >  py::self)
+        .def(py::self >= py::self)
+		.def("__hash__", [](const boost::rational<int64_t>& self) { return py::hash(py::make_tuple(self.numerator(), self.denominator())); })
+		.def("__repr__", [](const boost::rational<int64_t>& self) { return std::to_string(self.numerator()) + "/" + std::to_string(self.denominator()); });
+	
     py::class_<Divisors<int64_t>>(m, "Divisors")
-        //.def(py::init<const std::string&>(), py::arg("name"))
-        .def("get_instance", &Divisors<int64_t>::get_instance)
+        .def(py::init<>()) 
+		.def("get_instance", &Divisors<int64_t>::get_instance, py::return_value_policy::reference)
+        //.def("get_instance", &Divisors<int64_t>::get_instance, py::arg("n"), py::arg("bln_thread_local") = true, py::return_value_policy::reference)
+		//.def("get_instance", (Divisors<int64_t>& (Divisors<int64_t>::*)(int64_t, bool)) &Divisors<int64_t>::get_instance, py::arg("n"), py::arg("use_thread_local") = true, py::return_value_policy::reference)
+		.def("calc_density_bitmask", &Divisors<int64_t>::calc_density_bitmask)
+		.def("calc_density_unrolled", &Divisors<int64_t>::calc_density_unrolled)
         .def("divisors", &Divisors<int64_t>::divisors)
+		.def("size", &Divisors<int64_t>::size)
+		.def("len", &Divisors<int64_t>::size)
+		.def("__len__", &Divisors<int64_t>::size)
+		.def("id", &Divisors<int64_t>::get_id)
+		.def("thread_id", &Divisors<int64_t>::thread_id)
+		.def("resize", &Divisors<int64_t>::resize)
         .def("set_verbose", &Divisors<int64_t>::set_verbose);
 
 

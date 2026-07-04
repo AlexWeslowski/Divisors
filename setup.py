@@ -8,7 +8,7 @@ import sys
 # FOR /R . %f IN (include\*.h) DO git add "%f"
 # 
 
-__version__ = "1.1.7"
+__version__ = "1.1.11"
 
 # The main interface is through Pybind11Extension.
 # * You can add cxx_std=11/14/17, and then build_ext can be removed.
@@ -20,7 +20,12 @@ __version__ = "1.1.7"
 #   reproducible builds (https://github.com/pybind/python_example/pull/53)
 
 # 
-# Scripts\pip.exe install git+https://github.com/AlexWeslowski/Divisors.git
+# python3.14t.exe -m pip install H:\C++\AlexWeslowski\Divisors
+# python.exe -m pip install git+https://github.com/AlexWeslowski/Divisors.git
+# 
+# import divisors as div
+# div.divisors(33554430)
+# div.divisors(134217726)
 # 
 
 STACK_SIZE = 134217728
@@ -36,7 +41,7 @@ ext_modules = [
     #Extension(
     Pybind11Extension(
         "divisors",
-        sources=["src/Globals.cpp", "src/ArrayArray.cpp", "src/Combinations.cpp", "src/CombinationsIterator.cpp", "src/Point.cpp", "src/Divisors.cpp"],
+        sources=["src/Globals.cpp", "src/ArrayArray.cpp", "src/AtomicBitset.cpp", "src/Combinations.cpp", "src/CombinationsIterator.cpp", "src/Point.cpp", "src/Divisors.cpp"],
         include_dirs=['src', 'include', 'include/pybind11', 'include/python', 'include/primesieve', 'include/boost'],
         library_dirs=["lib"],
         libraries=["primesieve"],
@@ -60,5 +65,5 @@ setup(
     # level" feature, but in the future it may provide more features.
     cmdclass={"build_ext": build_ext},
     zip_safe=False,
-    python_requires=">=3.9",
+    python_requires=">=3.11",
 )

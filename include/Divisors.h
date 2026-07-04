@@ -6,38 +6,63 @@
 #include <algorithm>
 #include <bit>
 #include <bitset>
+#include <cctype>
+#include <cerrno>
+#include <charconv>
 #include <csignal>
 #include <cstdint>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <numeric> 
 #include <random>
 #include <source_location>
+#include <span>
 //#include <stacktrace>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
-#include <../include/boost/dynamic_bitset.hpp>
 #include <../include/boost/container/small_vector.hpp>
 #include <../include/boost/container/flat_map.hpp>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include <../include/boost/dynamic_bitset.hpp>
+#include <../include/boost/integer/common_factor_rt.hpp>
+#include <../include/boost/rational.hpp>
+//#include <../include/cpp_fractions_lib/Fraction.h>
+#include <../include/rational/rational.h>
+#include <Python.h>
+#include <pybind11/chrono.h>
 #include <pybind11/complex.h>
 #include <pybind11/functional.h>
-#include <pybind11/chrono.h>
+#include <pybind11/operators.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <../include/ValidInteger.h>
 #include <../include/Builtins.h>
 #include <../include/Functions.h>
 #include <../include/Globals.h>
 #include <../include/ArrayArray.h>
+#include <../include/AtomicBitset.h>
+#include <../include/AtomicBitReference.h>
+#include <../include/primesieve.h>
 #include <../include/primesieve.hpp>
 
 #ifndef DIVISORS_H
 #define DIVISORS_H
 
+//using Rational = Fraction<T>;
+template <typename T>
+using BoostRational = boost::rational<T>;
+//template <typename T>
+//using Rational = Commons::Math::Rational<T>;
+
 #define DIVISORS_SMALLVEC
 #define DIVISORS_SMALLMAP
+#undef FACTOR_CACHE
 #undef SMALLVEC
 #undef SMALLMAP
 
@@ -46,7 +71,7 @@ static bool bln_init = false;
 // 2^25 =  33554432
 // 2^26 =  67108864
 // 2^27 = 134217728
-// 2^28 = 268435456
+// 2^28 = 268435456 // 33554432 bytes // 33.55 MB
 const int LEN_SET_PRIMES = 268435456;
 const int LEN_DYN_PRIMES = 134217728;
 const size_t CANDIDATES_VEC_LEN = 32;
@@ -120,10 +145,10 @@ static vec_small_factors small_factor_cache(100);
 //static ArrayArray<int64_t, 40134, 201902> divisors_cache;
 //static ArrayArray<int64_t, 49152, 245760> divisors_cache;
 //static ArrayArray<int64_t, 65536, 327680> divisors_cache;
-static ArrayArray<int64_t, DIVISORS_CACHE_KEYS_LEN, DIVISORS_CACHE_VALUES_LEN> divisors_cache;
-static map_int64t_int factor_cache;
-static std::bitset<LEN_SET_PRIMES/2 + 1> setprimes;
-static boost::dynamic_bitset<> dynprimes(LEN_DYN_PRIMES/2 + 1);
+static ArrayArray<int64_t, DIVISORS_CACHE_KEYS_LEN, DIVISORS_CACHE_VALUES_LEN> static_divisors_cache;
+static map_int64t_int static_factor_cache;
+static std::bitset<LEN_SET_PRIMES/2 + 1> staticsetprimes;
+static boost::dynamic_bitset<> staticdynprimes(LEN_DYN_PRIMES/2 + 1);
 
 static vec_primes aryprimes;
 // 
@@ -181,22 +206,38 @@ size_t get_current_rss() {
 }
 */
 
+std::string format_with_commas(uint64_t value);
+unsigned long long to_long_long(const std::string& str);
+std::pair<unsigned long, unsigned long long> thread_id();
+uint64_t get_id(bool bln_thread_local = true);
+
 template<ValidIntegerType T>
 class Divisors {
 private:
     /*
     static std::vector<boost::container::flat_map<T, int>> small_factor_cache;
     static boost::container::flat_map<T, int> factor_cache;
-    static std::bitset<67108864 + 1> setprimes;
-    static std::vector<T> aryprimes;
     static boost::container::flat_map<T, size_t> idxprimes;
     */
+#ifdef FACTOR_CACHE
+	map_int64t_int factor_cache;
+#endif
+	std::bitset<LEN_SET_PRIMES/2 + 1> setprimes;
+    boost::dynamic_bitset<> dynprimes{LEN_DYN_PRIMES/2 + 1}; 
+	static unsigned short new_id();
 
 public:
+	ArrayArray<int64_t, DIVISORS_CACHE_KEYS_LEN, DIVISORS_CACHE_VALUES_LEN> divisors_cache;
+	
+	static std::mutex ids_mtx;
+	static boost::container::small_vector<unsigned short, 32> ids;
+	static boost::container::small_vector<unsigned short, 32> get_ids();
+	unsigned short id;
+	uint64_t get_id();
     Divisors();
     void init_primes(uint64_t a, uint64_t b);
     bool resize(int64_t n);
-    static Divisors<T>& get_instance(int64_t n);
+    static Divisors<T>& get_instance(int64_t n, bool bln_thread_local);
     void set_verbose(bool bln);
     constexpr int __countr_zero(T __x) noexcept;
     int bit_scan1(T n);
@@ -210,6 +251,15 @@ public:
     int num_digits(T n);
     bool is_prime(T n);
     std::pair<T, int> remove(T n, T p);
+	
+	//T mult(const std::span<T>& ary);
+	template<size_t N>
+	T mult(const std::array<T, N>& ary);
+	BoostRational<T> calc_density_bitmask(T i, const vector<T>& a, const BoostRational<T>& max_sum);
+	BoostRational<T> calc_density_unrolled(T i, const vector<T>& a, const BoostRational<T>& max_sum);
+	uint64_t size();
+	std::pair<unsigned long, unsigned long long> thread_id();
+	
 	vec_divisors<T> divisors(T n);
     vec_divisors<T> _rec_gen(T n, const map_t_int<T, int>& factors, const vec_divisors<T>& keys);
     vec_divisors<T> _divisors(T n);
@@ -230,5 +280,10 @@ public:
 //template<ValidIntegerType T>
 //std::vector<std::map<int64_t, int>> Divisors<T>::small_factor_cache(100);
 
+template<ValidIntegerType T>
+std::mutex Divisors<T>::ids_mtx;
+
+template<ValidIntegerType T>
+boost::container::small_vector<unsigned short, 32> Divisors<T>::ids;
 
 #endif

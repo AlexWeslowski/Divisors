@@ -77,6 +77,7 @@ public:
 	void push_back_small_vector(const boost::container::small_vector<T, N>& ary);
     void removeAt(size_t idx);
     void remove_at(size_t idx);
+	void clear();
     size_t size() const;
     size_t len() const;
 	size_t keys_size() const;

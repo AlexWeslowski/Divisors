@@ -1,7 +1,7 @@
     
     
 py::class_<Combinations<int64_t>, std::shared_ptr<Combinations<int64_t>>>(m, "Combinations")
-.def(py::init<int64_t>(), py::arg("n"))
+.def(py::init<int64_t, bool>(), py::arg("n"), py::arg("thread_local") = true, py::return_value_policy::reference)
 .def_readwrite("min_factors", &Combinations<int64_t>::min_factors)
 .def_readwrite("max_factors", &Combinations<int64_t>::max_factors)
 .def("backtrack", &Combinations<int64_t>::backtrack)
@@ -13,6 +13,7 @@ py::class_<Combinations<int64_t>, std::shared_ptr<Combinations<int64_t>>>(m, "Co
 .def("aryary_size", &Combinations<int64_t>::aryary_size)
 .def("aryary_len", &Combinations<int64_t>::aryary_len)
 .def("aryary_capacity", &Combinations<int64_t>::aryary_capacity)
+.def("thread_id", &Combinations<int64_t>::thread_id)
 .def("set_verbose", &Combinations<int64_t>::set_verbose)
 .def("setverbose", &Combinations<int64_t>::set_verbose)
 //.def("__iter__", [](Combinations<int64_t>& c) { return CombinationsIterator<int64_t>(c.get_arrayarray()); }, py::keep_alive<0, 1>())

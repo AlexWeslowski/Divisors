@@ -5,13 +5,23 @@ using namespace std;
 namespace py = pybind11;
 
 template<ValidIntegerType T>
-Combinations<T>::Combinations(T n) {
+Combinations<T>::Combinations(T n, bool bln_thread_local) {
     //none = ArrayArray<T>(1, false);
     //cmbinations = ArrayArray<T>(2048, true);
+	auto [i, j] = thread_id();
+	if (i == 0) {
+		i = j;
+	}
+	this->bln_thread_local = bln_thread_local;
+    this->th = i;
     this->n = n;
     //none = std::make_shared<ArrayArray<T, 1, 1>>(0, false);
     aryary = std::make_shared<ArrayArray<T, COMBINATIONS_KEYS_LEN, COMBINATIONS_VALUES_LEN>>(COMBINATIONS_KEYS_LEN, true);
 }
+
+/*
+get_div() and get_div(size_t idx) are defined at the bottom of Combinations.h
+*/
 
 template<ValidIntegerType T>
 size_t Combinations<T>::size() const {
@@ -48,6 +58,12 @@ std::pair<size_t, size_t> Combinations<T>::aryary_capacity() const {
 	} else {
 		return { 0, 0 };
 	}
+}
+
+template<ValidIntegerType T>
+std::pair<unsigned long, unsigned long long> Combinations<T>::thread_id() {
+	std::string id = std::format("{}", std::this_thread::get_id());
+	return std::make_pair(PyThread_get_thread_ident(), to_long_long(id));
 }
 
 template <ValidIntegerType T>
@@ -123,6 +139,7 @@ void Combinations<T>::set_verbose(bool bln) {
 template<ValidIntegerType T>
 void Combinations<T>::backtrack(T target) {
 	vec_factors<T> factors;
+	/*
 	if (target == 1145760) {
 		write_to_file = true;
 	} else {
@@ -131,10 +148,13 @@ void Combinations<T>::backtrack(T target) {
 	if (write_to_file) {
 		file_stream.open("combinations.txt");
 	}
+	*/
 	_backtrack(0, 1, target, factors);
+	/*
 	if (write_to_file) {
 		file_stream.close();
 	}
+	*/
 }
 
 template<ValidIntegerType T>
@@ -378,7 +398,7 @@ void Combinations<T>::backtrack(T target, std::vector<T>& factors) {
 */
 
 
-PYBIND11_MODULE(combinations, m) {
+PYBIND11_MODULE(combinations, m, py::mod_gil_not_used()) {
     m.doc() = "combinations made with pybind11";
 
 #include <../src/CombinationsPy.cpp>

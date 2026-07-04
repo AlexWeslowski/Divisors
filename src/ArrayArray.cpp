@@ -275,6 +275,19 @@ void ArrayArray<T, NK, NV>::removeAt(size_t idx) {
 }
 
 template<ValidIntegerType T, size_t NK, size_t NV>
+void ArrayArray<T, NK, NV>::clear() {
+	size_ = 0;
+    //keys_capacity_ = 0;
+    //values_capacity_ = 0;
+    keys_index_ = 0;
+    values_index_ = 0;
+	keys.clear();
+	values.clear();
+	large_keys.clear();
+	large_values.clear();
+}
+	
+template<ValidIntegerType T, size_t NK, size_t NV>
 size_t ArrayArray<T, NK, NV>::size() const {
     return keys_index_ / 2;
 }
@@ -362,7 +375,7 @@ vec384<vec24<T>> ArrayArray<T, NK, NV>::to_array() const {
 }
 
 
-PYBIND11_MODULE(arrayarray, m) {
+PYBIND11_MODULE(arrayarray, m, py::mod_gil_not_used()) {
     m.doc() = "arrayarray made with pybind11";
 
 #include <../src/ArrayArrayPy.cpp>

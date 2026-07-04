@@ -20,7 +20,7 @@ vec24<T> CombinationsIterator<T>::next() {
 
 
 
-PYBIND11_MODULE(combinationsiterator, m) {
+PYBIND11_MODULE(combinationsiterator, m, py::mod_gil_not_used()) {
     m.doc() = "combinationsiterator made with pybind11";
 
 #include "../src/CombinationsIteratorPy.cpp"

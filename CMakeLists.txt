@@ -29,24 +29,28 @@ elseif(UNIX)
 endif()
 
 project (Divisors CXX)
-set(PROJECT_VERSION "1.1.7")
+set(PROJECT_VERSION "1.1.11")
 
 find_package(Git QUIET)
 include(FetchContent)
+#GIT_TAG        v2.10.1
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
-  GIT_TAG        v2.10.1
+  GIT_TAG        v3.0.4
 )
 FetchContent_MakeAvailable(pybind11)
 
 
 get_filename_component(PARENT_DIR "${PROJECT_SOURCE_DIR}" DIRECTORY)
 get_filename_component(PARENT_DIR "${PARENT_DIR}" DIRECTORY)
+# https://github.com/boostorg/dynamic_bitset/tree/develop/include/boost
+# https://github.com/boostorg/utility/tree/develop/include/boost
 set(REPOS
     "cppalliance/int128/include/boost=boost"
 	"boostorg/dynamic_bitset/tree/develop/include/boost=boost"
 	"boostorg/config/tree/develop/include/boost=boost"
+	"boostorg/utility/tree/develop/include/boost=boost"
     "jbapple/128-bit-literals=128-bit-literals"
     "int128-libraries/abslint128/include=abslint128"
     "int128-libraries/abslint128/src=abslint128"
